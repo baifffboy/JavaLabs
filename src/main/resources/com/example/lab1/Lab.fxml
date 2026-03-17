@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.effect.Light.Distant?>
+<?import javafx.scene.effect.Lighting?>
+<?import javafx.scene.effect.Shadow?>
+<?import javafx.scene.layout.AnchorPane?>
+<?import javafx.scene.layout.Pane?>
+<?import javafx.scene.shape.Circle?>
+<?import javafx.scene.shape.Line?>
+<?import javafx.scene.shape.Polyline?>
+<?import javafx.scene.text.Font?>
+
+<AnchorPane fx:id="pane" prefHeight="400.0" prefWidth="600.0" xmlns="http://javafx.com/javafx/23.0.1" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.example.lab1.LabController">
+   <children>
+      <Line fx:id="lineSmall" endX="-100.0" endY="296.9999694824219" layoutX="506.0" layoutY="5.0" startX="-100.0" startY="1.1666865348815918" />
+      <Line fx:id="lineBig" endX="-100.0" endY="295.6666564941406" layoutX="427.0" layoutY="5.0" startX="-100.0" startY="3.1666860580444336" />
+      <Pane fx:id="app" layoutX="3.0" layoutY="308.0" prefHeight="90.0" prefWidth="460.0" style="-fx-border-width: 2px; -fx-border-color: black;">
+         <children>
+            <Button fx:id="buttonStart" layoutX="7.0" layoutY="4.0" mnemonicParsing="false" onAction="#onStart" prefHeight="79.0" prefWidth="58.0" text="Start" />
+            <Button fx:id="buttonStop" layoutX="75.0" layoutY="4.0" mnemonicParsing="false" onAction="#onStop" prefHeight="79.0" prefWidth="58.0" text="Stop" />
+            <Button fx:id="buttonPause" layoutX="146.0" layoutY="4.0" mnemonicParsing="false" onAction="#onPause" prefHeight="79.0" prefWidth="58.0" text="Pause" />
+            <Button fx:id="buttonContinue" layoutX="215.0" layoutY="4.0" mnemonicParsing="false" onAction="#onContinue" prefHeight="79.0" prefWidth="67.0" text="Continue" />
+         </children>
+      </Pane>
+      <Pane layoutX="3.0" layoutY="2.0" prefHeight="303.0" prefWidth="48.0" style="-fx-border-width: 2px; -fx-border-color: black;">
+         <effect>
+            <Lighting>
+               <bumpInput>
+                  <Shadow />
+               </bumpInput>
+               <light>
+                  <Light.Distant />
+               </light>
+            </Lighting>
+         </effect>
+         <children>
+            <Polyline fx:id="archer" fill="CHARTREUSE" layoutX="64.0" layoutY="171.0" onMouseClicked="#onArcherClicked" points="-50.0, -40.0, -30.66668701171875, -17.666671752929688, -50.0, 0.6666717529296875, -50.0, -40.0" strokeType="INSIDE" />
+         </children>
+      </Pane>
+      <Pane fx:id="counter" layoutX="466.0" layoutY="2.0" prefHeight="394.0" prefWidth="132.0" style="-fx-border-width: 2px; -fx-border-color: black;">
+         <children>
+            <Label layoutX="14.0" layoutY="14.0" prefHeight="29.0" prefWidth="146.0" text="Счёт игрока" textAlignment="CENTER">
+               <font>
+                  <Font name="System Bold" size="18.0" />
+               </font>
+            </Label>
+            <Label layoutX="15.0" layoutY="80.0" prefHeight="29.0" prefWidth="146.0" text="Выстрелов" textAlignment="CENTER">
+               <font>
+                  <Font name="System Bold" size="18.0" />
+               </font>
+            </Label>
+            <Label fx:id="counterOfPlayer" layoutX="15.0" layoutY="55.0" text="0" />
+            <Label fx:id="counterOfShot" layoutX="15.0" layoutY="117.0" text="0" />
+         </children>
+      </Pane>
+      <Circle fx:id="circleSmall" fill="#ff1f1f" layoutX="406.0" layoutY="154.0" radius="12.0" stroke="BLACK" strokeType="INSIDE" />
+      <Circle fx:id="circleBig" fill="#ff1f1f" layoutX="327.0" layoutY="154.0" radius="24.0" stroke="BLACK" strokeType="INSIDE" />
+      <Line fx:id="arrow" endX="-63.33331298828125" endY="1.52587890625E-5" layoutX="163.0" layoutY="154.0" startX="-100.0" style="-fx-stroke-width: 3px; -fx-stroke: black;" />
+   </children>
+</AnchorPane>
