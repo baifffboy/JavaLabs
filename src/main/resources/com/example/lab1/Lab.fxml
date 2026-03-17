@@ -14,8 +14,6 @@
 
 <AnchorPane fx:id="pane" prefHeight="400.0" prefWidth="600.0" xmlns="http://javafx.com/javafx/23.0.1" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.example.lab1.LabController">
    <children>
-      <Line fx:id="lineSmall" endX="-100.0" endY="296.9999694824219" layoutX="506.0" layoutY="5.0" startX="-100.0" startY="1.1666865348815918" />
-      <Line fx:id="lineBig" endX="-100.0" endY="295.6666564941406" layoutX="427.0" layoutY="5.0" startX="-100.0" startY="3.1666860580444336" />
       <Pane fx:id="app" layoutX="3.0" layoutY="308.0" prefHeight="90.0" prefWidth="460.0" style="-fx-border-width: 2px; -fx-border-color: black;">
          <children>
             <Button fx:id="buttonStart" layoutX="7.0" layoutY="4.0" mnemonicParsing="false" onAction="#onStart" prefHeight="79.0" prefWidth="58.0" text="Start" />
@@ -53,10 +51,18 @@
             </Label>
             <Label fx:id="counterOfPlayer" layoutX="15.0" layoutY="55.0" text="0" />
             <Label fx:id="counterOfShot" layoutX="15.0" layoutY="117.0" text="0" />
+            <Label layoutX="14.0" layoutY="145.0" prefHeight="29.0" prefWidth="146.0" text="Очки игрока" textAlignment="CENTER">
+               <font>
+                  <Font name="System Bold" size="18.0" />
+               </font>
+            </Label>
+            <Label fx:id="count" layoutX="15.0" layoutY="180.0" text="0" />
          </children>
       </Pane>
+      <Line fx:id="arrow" endX="-63.33331298828125" endY="1.52587890625E-5" layoutX="163.0" layoutY="154.0" startX="-100.0" style="-fx-stroke-width: 3px; -fx-stroke: black;" />
+      <Line fx:id="lineBig" endX="-100.0" endY="208.99996948242188" layoutX="427.0" layoutY="93.0" startX="-100.0" startY="-83.66667938232422" />
+      <Line fx:id="lineSmall" endX="-100.0" endY="208.99996948242188" layoutX="506.0" layoutY="93.0" startX="-100.0" startY="-83.66667938232422" />
       <Circle fx:id="circleSmall" fill="#ff1f1f" layoutX="406.0" layoutY="154.0" radius="12.0" stroke="BLACK" strokeType="INSIDE" />
       <Circle fx:id="circleBig" fill="#ff1f1f" layoutX="327.0" layoutY="154.0" radius="24.0" stroke="BLACK" strokeType="INSIDE" />
-      <Line fx:id="arrow" endX="-63.33331298828125" endY="1.52587890625E-5" layoutX="163.0" layoutY="154.0" startX="-100.0" style="-fx-stroke-width: 3px; -fx-stroke: black;" />
    </children>
 </AnchorPane>

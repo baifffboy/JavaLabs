@@ -34,6 +34,8 @@ public class LabController {
     Label counterOfShot;
     @FXML
     Label counterOfPlayer;
+    @FXML
+    Label count;
 
     Thread threadForCircle;
     Thread threadForArrow;
@@ -44,8 +46,10 @@ public class LabController {
 
     private static final int STEP_BY_BIGCIRCLE = 5;
     private static final int STEP_BY_SMALLCIRCLE = STEP_BY_BIGCIRCLE * 2;
+    private static final int STEP_BY_ARROW = 10;
     private static int shot = 0;
     private static int shotPlayer = 0;
+    private static int countPoints = 0;
     private double LENGTH_OF_ARROW;
 
     private class Point {
@@ -69,7 +73,7 @@ public class LabController {
         currentPointForCircleSmall =
                 new AtomicReference<>(new Point(circleSmall.getLayoutX(), circleSmall.getLayoutY()));
         currentPointForArrow =
-                new AtomicReference<>(new Point(arrow.getEndX(), arrow.getEndY()));
+                new AtomicReference<>(new Point(arrow.getLayoutX(), arrow.getLayoutY()));
 
         LENGTH_OF_ARROW = arrow.getEndX() - arrow.getStartX();
 
@@ -85,10 +89,8 @@ public class LabController {
                 circleSmall.setLayoutY(pSmall.y);
 
                 Point pArrow = currentPointForArrow.get();
-                arrow.setEndX(pArrow.x);
-                arrow.setEndY(pArrow.y);
-                arrow.setStartX(pArrow.x - LENGTH_OF_ARROW);
-                arrow.setStartY(pArrow.y);
+                arrow.setLayoutX(pArrow.x);
+                arrow.setLayoutY(pArrow.y);
             }
         };
 
@@ -99,14 +101,14 @@ public class LabController {
         currentPointForCircleBig.getAndUpdate(point -> {
             double ty = point.y;
             ty += STEP_BY_BIGCIRCLE;
-            if (ty > lineBig.getEndY()) ty = lineBig.getStartY();
+            if (ty > lineBig.getEndY() + lineBig.getLayoutY()) ty = lineBig.getStartY() + lineBig.getLayoutY();
             return new Point(point.x, ty);
         });
 
         currentPointForCircleSmall.getAndUpdate(point -> {
             double ty = point.y;
             ty -= STEP_BY_SMALLCIRCLE;
-            if (ty < lineBig.getStartY()) ty = lineBig.getEndY();
+            if (ty < lineSmall.getStartY() + lineSmall.getLayoutY()) ty = lineSmall.getEndY() + lineSmall.getLayoutY();
             return new Point(point.x, ty);
         });
     }
@@ -174,32 +176,40 @@ public class LabController {
 
     void nextFlyStep() {
         currentPointForArrow.getAndUpdate(point -> {
-            double tx = point.x;
+            double tx = point.x + arrow.getEndX();
             double ty = point.y;
-            tx += STEP_BY_SMALLCIRCLE;
             // промах tx == верхнему левому углу окна
-            if(point.x <= counter.getLayoutX() && tx >= counter.getLayoutX()) {
+            if(tx >= counter.getLayoutX() - LENGTH_OF_ARROW / 2) {
                 isFly = false;
                 threadForArrow.interrupt();
                 threadForArrow = null;
-                return new Point(-63.33331298828125, 1.52587890625E-5);
+                return new Point(163, 154);
             }
             // попадание в большую и маленькую мишень
-            if (tx >= circleBig.getCenterX() - circleBig.getRadius() && tx <= circleBig.getCenterX() + circleBig.getRadius()
-            && ty <= circleBig.getCenterY() - circleBig.getRadius() && ty >= circleBig.getCenterY() + circleBig.getRadius()) {
-                counterOfPlayer.setText(String.valueOf(shotPlayer + 1));
+            if (tx >= circleBig.getLayoutX() - circleBig.getRadius() && tx <= circleBig.getLayoutX() + circleBig.getRadius()
+            && ty >= circleBig.getLayoutY() - circleBig.getRadius() && ty <= circleBig.getLayoutY() + circleBig.getRadius()) {
+                shotPlayer++;
+                countPoints++;
+                Platform.runLater(() -> count.setText(String.valueOf(countPoints)));
+                Platform.runLater(() -> counterOfPlayer.setText(String.valueOf(shotPlayer)));
                 isFly = false;
                 threadForArrow.interrupt();
                 threadForArrow = null;
-                return new Point(-63.33331298828125, 1.52587890625E-5);
-            } else if (tx >= circleSmall.getCenterX() - circleSmall.getRadius() && tx <= circleSmall.getCenterX() + circleSmall.getRadius()
-                    && ty <= circleSmall.getCenterY() - circleSmall.getRadius() && ty >= circleSmall.getCenterY() + circleSmall.getRadius()) {
-                counterOfPlayer.setText(String.valueOf(shotPlayer + 1));
+                return new Point(163, 154);
+            } else if (tx >= circleSmall.getLayoutX() - circleSmall.getRadius() && tx <= circleSmall.getLayoutX() + circleSmall.getRadius()
+                    && ty >= circleSmall.getLayoutY() - circleSmall.getRadius() && ty <= circleSmall.getLayoutY() + circleSmall.getRadius()) {
+                shotPlayer++;
+                countPoints += 2;
+                Platform.runLater(() -> count.setText(String.valueOf(countPoints)));
+                Platform.runLater(() -> counterOfPlayer.setText(String.valueOf(shotPlayer)));
                 isFly = false;
                 threadForArrow.interrupt();
                 threadForArrow = null;
-                return new Point(-63.33331298828125, 1.52587890625E-5);
-            } else return new Point(tx, point.y);
+                return new Point(163, 154);
+            } else {
+                tx += STEP_BY_ARROW;
+                return new Point(tx - arrow.getEndX(), point.y);
+            }
         });
     }
 
@@ -219,7 +229,7 @@ public class LabController {
                     }
                 }
                 try {
-                    Thread.sleep(100);
+                    Thread.sleep(50);
                 } catch (InterruptedException e) {
                     return;
                 }
@@ -230,7 +240,8 @@ public class LabController {
 
     @FXML
     void onArcherClicked() {
-        counterOfShot.setText(String.valueOf(shot + 1));
+        shot++;
+        counterOfShot.setText(String.valueOf(shot));
         arrowFlight();
     }
 }
