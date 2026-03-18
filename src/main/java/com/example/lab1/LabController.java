@@ -1,6 +1,5 @@
 package com.example.lab1;
 
-import javafx.animation.Animation;
 import javafx.animation.AnimationTimer;
 import javafx.application.Platform;
 import javafx.fxml.FXML;
@@ -115,14 +114,14 @@ public class LabController {
 
     @FXML
     void onStart() {
-        if(threadForCircle != null) return;
+        if (threadForCircle != null) return;
         threadForCircle = new Thread(() -> {
             isRun = true;
             isPause = false;
             while (isRun) {
                 next();
-                synchronized(lockObject) {
-                    if(isPause) {
+                synchronized (lockObject) {
+                    if (isPause) {
                         try {
                             lockObject.wait();
                         } catch (InterruptedException e) {
@@ -170,7 +169,12 @@ public class LabController {
         }
 
         if (currentPointForArrow != null) {
-            currentPointForArrow.set(new Point(-63.33331298828125, 1.52587890625E-5));
+            currentPointForArrow.set(new Point(163, 154));
+        }
+
+        if (currentPointForCircleBig != null && currentPointForCircleSmall != null) {
+            currentPointForCircleBig.set(new Point(327, 154));
+            currentPointForCircleSmall.set(new Point(406, 154));
         }
     }
 
@@ -179,7 +183,7 @@ public class LabController {
             double tx = point.x + arrow.getEndX();
             double ty = point.y;
             // промах tx == верхнему левому углу окна
-            if(tx >= counter.getLayoutX() - LENGTH_OF_ARROW / 2) {
+            if (tx >= counter.getLayoutX() - LENGTH_OF_ARROW / 2) {
                 isFly = false;
                 threadForArrow.interrupt();
                 threadForArrow = null;
@@ -187,7 +191,7 @@ public class LabController {
             }
             // попадание в большую и маленькую мишень
             if (tx >= circleBig.getLayoutX() - circleBig.getRadius() && tx <= circleBig.getLayoutX() + circleBig.getRadius()
-            && ty >= circleBig.getLayoutY() - circleBig.getRadius() && ty <= circleBig.getLayoutY() + circleBig.getRadius()) {
+                    && ty >= circleBig.getLayoutY() - circleBig.getRadius() && ty <= circleBig.getLayoutY() + circleBig.getRadius()) {
                 shotPlayer++;
                 countPoints++;
                 Platform.runLater(() -> count.setText(String.valueOf(countPoints)));
@@ -214,13 +218,13 @@ public class LabController {
     }
 
     void arrowFlight() {
-        if(threadForArrow != null) return;
+        if (threadForArrow != null) return;
         isFly = true;
         threadForArrow = new Thread(() -> {
-            while(isFly) {
+            while (isFly) {
                 nextFlyStep();
-                synchronized(lockObject) {
-                    if(isPause) {
+                synchronized (lockObject) {
+                    if (isPause) {
                         try {
                             lockObject.wait();
                         } catch (InterruptedException e) {
