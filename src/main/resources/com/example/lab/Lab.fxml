@@ -12,7 +12,7 @@
 <?import javafx.scene.shape.Polyline?>
 <?import javafx.scene.text.Font?>
 
-<AnchorPane fx:id="pane" prefHeight="400.0" prefWidth="600.0" xmlns="http://javafx.com/javafx/23.0.1" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.example.lab1.LabController">
+<AnchorPane fx:id="pane" prefHeight="400.0" prefWidth="600.0" xmlns="http://javafx.com/javafx/23.0.1" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.example.lab.LabController">
    <children>
       <Pane fx:id="app" layoutX="3.0" layoutY="308.0" prefHeight="90.0" prefWidth="460.0" style="-fx-border-width: 2px; -fx-border-color: black;">
          <children>

@@ -1,4 +1,4 @@
-package com.example.lab1;
+package com.example.lab;
 
 import javafx.animation.AnimationTimer;
 import javafx.application.Platform;

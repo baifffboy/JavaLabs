@@ -1,4 +1,4 @@
-module com.example.lab1 {
+module com.example.lab {
     requires javafx.controls;
     requires javafx.fxml;
 
@@ -6,6 +6,6 @@ module com.example.lab1 {
     requires com.dlsc.formsfx;
     requires javafx.graphics;
 
-    opens com.example.lab1 to javafx.fxml;
-    exports com.example.lab1;
+    opens com.example.lab to javafx.fxml;
+    exports com.example.lab;
 }

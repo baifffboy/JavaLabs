@@ -5,7 +5,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>com.example</groupId>
-    <artifactId>Lab1</artifactId>
+    <artifactId>JavaLabs</artifactId>
     <version>1.0-SNAPSHOT</version>
     <name>Lab1</name>
 
@@ -75,7 +75,7 @@
                         <!-- Default configuration for running with: mvn clean javafx:run -->
                         <id>default-cli</id>
                         <configuration>
-                            <mainClass>com.example.lab1/com.example.lab1.HelloApplication</mainClass>
+                            <mainClass>com.example.lab1/com.example.lab.HelloApplication</mainClass>
                             <launcher>app</launcher>
                             <jlinkZipName>app</jlinkZipName>
                             <jlinkImageName>app</jlinkImageName>
