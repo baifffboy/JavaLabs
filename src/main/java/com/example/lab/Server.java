@@ -30,6 +30,14 @@ public class Server {
         } catch (IOException e) {}
     }
 
+    public void broadcast(String msg, ClientHandler exclude) {
+        for (ClientHandler c : clients) {
+            if (c != exclude) {
+                c.send(msg);
+            }
+        }
+    }
+
     public void broadcast(String msg) {
         for (ClientHandler c : clients) {
             c.send(msg);
@@ -43,14 +51,16 @@ public class Server {
 
     public void checkStart() {
         if (gameRunning) return;
+        int readyCount = 0;
         for (ClientHandler c : clients) {
-            if (!c.ready) return;
+            if (c.ready) readyCount++;
         }
-        if (clients.size() >= 2) {
+        if (readyCount == clients.size() && clients.size() >= 2) {
             gameRunning = true;
             for (ClientHandler c : clients) {
                 c.score = 0;
                 c.shots = 0;
+                c.send("SCORE:" + c.id + ":" + c.score + ":" + c.shots + ":" + c.name);
             }
             broadcast("START");
             System.out.println("Игра началась!");
@@ -60,14 +70,22 @@ public class Server {
     public void handleShot(String player, int points, ClientHandler shooter) {
         if (!gameRunning) return;
         shooter.score += points;
-        shooter.shots++;
-        broadcast("SCORE:" + player + ":" + shooter.score + ":" + shooter.shots);
+        // shots обновляется отдельно через SHOT_COUNT
+        broadcast("SCORE:" + shooter.id + ":" + shooter.score + ":" + shooter.shots + ":" + player);
+        System.out.println("Попадание от " + player + " (+" + points + ")");
 
         if (shooter.score >= 6) {
             gameRunning = false;
-            broadcast("WINNER:" + player);
+            broadcast("WINNER:" + shooter.id);
+            System.out.println("Победитель: " + player);
             for (ClientHandler c : clients) c.ready = false;
         }
+    }
+
+    public void handleShotCount(int shots, ClientHandler shooter) {
+        if (!gameRunning) return;
+        shooter.shots = shots;
+        broadcast("SCORE:" + shooter.id + ":" + shooter.score + ":" + shooter.shots + ":" + shooter.name);
     }
 
     public void handleStop() {
@@ -84,6 +102,7 @@ public class Server {
         private BufferedReader in;
         private Server server;
         private String name;
+        private int id;
         private boolean ready = false;
         private int score = 0;
         private int shots = 0;
@@ -97,8 +116,11 @@ public class Server {
 
         public void run() {
             try {
-                name = in.readLine();
-                // Проверка уникальности имени
+                String line = in.readLine();
+                String[] parts = line.split(":");
+                name = parts[0];
+                id = Integer.parseInt(parts[1]);
+
                 boolean nameTaken = false;
                 for (ClientHandler c : server.clients) {
                     if (c.name != null && c.name.equals(name) && c != this) {
@@ -111,18 +133,31 @@ public class Server {
                     socket.close();
                     return;
                 }
-                out.println("OK");
-                System.out.println("Игрок " + name + " подключился");
+                out.println("OK:" + id);
+                System.out.println("Игрок " + name + " (ID:" + id + ") подключен");
+
+                for (ClientHandler c : server.clients) {
+                    if (c != this && c.name != null) {
+                        out.println("NEW_PLAYER:" + c.id + ":" + c.name);
+                        out.println("SCORE:" + c.id + ":" + c.score + ":" + c.shots + ":" + c.name);
+                    }
+                }
+                server.broadcast("NEW_PLAYER:" + id + ":" + name, this);
 
                 String msg;
                 while ((msg = in.readLine()) != null) {
                     if (msg.equals("READY")) {
                         ready = true;
+                        System.out.println(name + " готов");
                         server.checkStart();
                     }
                     else if (msg.startsWith("SHOT:")) {
                         int points = Integer.parseInt(msg.split(":")[1]);
                         server.handleShot(name, points, this);
+                    }
+                    else if (msg.startsWith("SHOT_COUNT:")) {
+                        int shots = Integer.parseInt(msg.split(":")[1]);
+                        server.handleShotCount(shots, this);
                     }
                     else if (msg.equals("STOP")) {
                         server.handleStop();
@@ -135,7 +170,9 @@ public class Server {
             }
         }
 
-        void send(String msg) { out.println(msg); }
+        void send(String msg) {
+            out.println(msg);
+        }
     }
 
     public static void main(String[] args) {

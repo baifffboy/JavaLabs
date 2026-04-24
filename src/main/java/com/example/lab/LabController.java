@@ -3,14 +3,21 @@ package com.example.lab;
 import javafx.animation.AnimationTimer;
 import javafx.application.Platform;
 import javafx.fxml.FXML;
+import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.TextInputDialog;
 import javafx.scene.layout.AnchorPane;
 import javafx.scene.layout.Pane;
+import javafx.scene.layout.VBox;
 import javafx.scene.shape.Circle;
 import javafx.scene.shape.Line;
 import javafx.scene.shape.Polyline;
+import javafx.stage.Modality;
+import javafx.stage.Stage;
+import javafx.stage.StageStyle;
+import javafx.geometry.Pos;
+
 import java.io.*;
 import java.net.*;
 import java.util.Optional;
@@ -22,8 +29,8 @@ public class LabController {
     @FXML private AnchorPane pane;
     @FXML private Line lineSmall;
     @FXML private Line lineBig;
-    @FXML private Line arrow;
-    @FXML private Line arrow1;
+    @FXML private Line arrow;      // Стрела игрока 1
+    @FXML private Line arrow1;     // Стрела игрока 2
     @FXML private Polyline archer;
     @FXML private Polyline archer1;
     @FXML private Pane counter;
@@ -41,26 +48,33 @@ public class LabController {
     private PrintWriter out;
     private BufferedReader in;
     private String playerName;
-    private int playerNumber = 1;
+    private int playerId;
     private boolean gameActive = false;
+    private Stage statusStage;
+    private Label statusLabel;
+
+    private String otherPlayerName = "";
+    private int otherPlayerScore = 0;
+    private int otherPlayerShots = 0;
 
     Thread threadForCircle;
-    Thread threadForArrow1;
-    Thread threadForArrow2;
+    Thread threadForArrow;
     volatile boolean isRun;
     volatile boolean isPause;
-    volatile boolean isFly1;
-    volatile boolean isFly2;
+    volatile boolean isFly;
     private final Object lockObject = new Object();
 
     private static final int STEP_BY_BIGCIRCLE = 5;
     private static final int STEP_BY_SMALLCIRCLE = STEP_BY_BIGCIRCLE * 2;
     private static final int STEP_BY_ARROW = 10;
-    private static int shot1 = 0;
-    private static int shot2 = 0;
-    private static int countPoints1 = 0;
-    private static int countPoints2 = 0;
+    private int myScore = 0;
+    private int myShots = 0;
     private double LENGTH_OF_ARROW;
+
+    private static final double ARROW1_START_X = 164;
+    private static final double ARROW1_START_Y = 77;
+    private static final double ARROW2_START_X = 163;
+    private static final double ARROW2_START_Y = 242;
 
     private class Point {
         double x;
@@ -73,15 +87,12 @@ public class LabController {
 
     private AtomicReference<Point> currentPointForCircleBig;
     private AtomicReference<Point> currentPointForCircleSmall;
-    private AtomicReference<Point> currentPointForArrow;
-    private AtomicReference<Point> currentPointForArrow1;
+    private AtomicReference<Point> currentPointForMyArrow;
 
     @FXML
     public void initialize() {
         currentPointForCircleBig = new AtomicReference<>(new Point(circleBig.getLayoutX(), circleBig.getLayoutY()));
         currentPointForCircleSmall = new AtomicReference<>(new Point(circleSmall.getLayoutX(), circleSmall.getLayoutY()));
-        currentPointForArrow = new AtomicReference<>(new Point(arrow.getLayoutX(), arrow.getLayoutY()));
-        currentPointForArrow1 = new AtomicReference<>(new Point(arrow1.getLayoutX(), arrow1.getLayoutY()));
 
         LENGTH_OF_ARROW = arrow.getEndX() - arrow.getStartX();
 
@@ -96,13 +107,16 @@ public class LabController {
                 circleSmall.setLayoutX(pSmall.x);
                 circleSmall.setLayoutY(pSmall.y);
 
-                Point pArrow = currentPointForArrow.get();
-                arrow.setLayoutX(pArrow.x);
-                arrow.setLayoutY(pArrow.y);
-
-                Point pArrow1 = currentPointForArrow1.get();
-                arrow1.setLayoutX(pArrow1.x);
-                arrow1.setLayoutY(pArrow1.y);
+                if (currentPointForMyArrow != null) {
+                    Point pArrow = currentPointForMyArrow.get();
+                    if (playerId == 1) {
+                        arrow.setLayoutX(pArrow.x);
+                        arrow.setLayoutY(pArrow.y);
+                    } else {
+                        arrow1.setLayoutX(pArrow.x);
+                        arrow1.setLayoutY(pArrow.y);
+                    }
+                }
             }
         };
         renderer.start();
@@ -110,71 +124,141 @@ public class LabController {
         Platform.runLater(() -> showConnectionDialog());
     }
 
+    private void showStatusWindow(String title, String message) {
+        Platform.runLater(() -> {
+            if (statusStage != null && statusStage.isShowing()) {
+                statusLabel.setText(message);
+                return;
+            }
+
+            statusStage = new Stage();
+            statusStage.initModality(Modality.NONE);
+            statusStage.initStyle(StageStyle.UTILITY);
+            statusStage.setTitle(title);
+
+            statusLabel = new Label(message);
+            statusLabel.setStyle("-fx-font-size: 14px; -fx-padding: 20px;");
+            statusLabel.setAlignment(Pos.CENTER);
+
+            VBox vbox = new VBox(statusLabel);
+            vbox.setStyle("-fx-padding: 10px; -fx-alignment: center;");
+
+            Scene scene = new Scene(vbox, 400, 150);
+            statusStage.setScene(scene);
+            statusStage.show();
+        });
+    }
+
+    private void closeStatusWindow() {
+        Platform.runLater(() -> {
+            if (statusStage != null && statusStage.isShowing()) {
+                statusStage.close();
+                statusStage = null;
+            }
+        });
+    }
+
+    private void showErrorWindow(String message) {
+        Platform.runLater(() -> {
+            Stage errorStage = new Stage();
+            errorStage.initModality(Modality.APPLICATION_MODAL);
+            errorStage.setTitle("Сообщение");
+
+            Label errorLabel = new Label(message);
+            errorLabel.setStyle("-fx-font-size: 14px; -fx-padding: 20px;");
+            errorLabel.setAlignment(Pos.CENTER);
+
+            Button okButton = new Button("OK");
+            okButton.setOnAction(e -> errorStage.close());
+
+            VBox vbox = new VBox(errorLabel, okButton);
+            vbox.setStyle("-fx-padding: 20px; -fx-alignment: center; -fx-spacing: 10px;");
+
+            Scene scene = new Scene(vbox, 400, 200);
+            errorStage.setScene(scene);
+            errorStage.showAndWait();
+        });
+    }
+
     private void showConnectionDialog() {
         TextInputDialog numDialog = new TextInputDialog("1");
         numDialog.setTitle("Номер игрока");
-        numDialog.setHeaderText("Вы игрок 1 или 2?");
-        numDialog.setContentText("Номер (1 или 2):");
+        numDialog.setHeaderText("Выберите номер игрока (1 или 2)");
+        numDialog.setContentText("Номер:");
 
         Optional<String> numResult = numDialog.showAndWait();
         if (numResult.isPresent()) {
             try {
-                playerNumber = Integer.parseInt(numResult.get());
-                if (playerNumber != 1 && playerNumber != 2) playerNumber = 1;
+                playerId = Integer.parseInt(numResult.get());
+                if (playerId != 1 && playerId != 2) playerId = 1;
             } catch (NumberFormatException e) {
-                playerNumber = 1;
+                playerId = 1;
             }
         }
 
-        TextInputDialog dialog = new TextInputDialog("Игрок" + playerNumber);
+        TextInputDialog dialog = new TextInputDialog("Игрок" + playerId);
         dialog.setTitle("Подключение");
         dialog.setHeaderText("Введите имя игрока");
         dialog.setContentText("Имя:");
 
         Optional<String> result = dialog.showAndWait();
-        playerName = result.orElse("Игрок" + playerNumber);
-        if (playerName.trim().isEmpty()) playerName = "Игрок" + playerNumber;
+        playerName = result.orElse("Игрок" + playerId);
+        if (playerName.trim().isEmpty()) playerName = "Игрок" + playerId;
 
         connectToServer();
     }
 
     private void connectToServer() {
+        showStatusWindow("Подключение", "Подключение к серверу...");
+
         new Thread(() -> {
             try {
-                socket = new Socket("localhost", 12345);
+                socket = new Socket("127.0.0.1", 12345);
                 out = new PrintWriter(socket.getOutputStream(), true);
                 in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
 
-                out.println(playerName);
+                out.println(playerName + ":" + playerId);
                 String response = in.readLine();
 
-                if ("OK".equals(response)) {
-                    Platform.runLater(() -> {
-                        if (playerNumber == 1) {
+                if (response != null && response.startsWith("OK:")) {
+                    int assignedId = Integer.parseInt(response.split(":")[1]);
+                    playerId = assignedId;
+
+                    if (playerId == 1) {
+                        currentPointForMyArrow = new AtomicReference<>(new Point(ARROW1_START_X, ARROW1_START_Y));
+                        Platform.runLater(() -> {
                             nameOfGamer1.setText(playerName);
-                        } else {
+                            nameOfGamer2.setText("Ожидание...");
+                        });
+                    } else {
+                        currentPointForMyArrow = new AtomicReference<>(new Point(ARROW2_START_X, ARROW2_START_Y));
+                        Platform.runLater(() -> {
                             nameOfGamer2.setText(playerName);
-                        }
+                            nameOfGamer1.setText("Ожидание...");
+                        });
+                    }
+
+                    Platform.runLater(() -> {
                         ready.setDisable(false);
                     });
 
-                    while (true) {
-                        String msg = in.readLine();
-                        if (msg == null) break;
+                    showStatusWindow("Ожидание игроков", "Ожидание готовности других игроков...\nНажмите 'Готов', когда будете готовы");
+
+                    String msg;
+                    while ((msg = in.readLine()) != null) {
                         handleServerMessage(msg);
                     }
                 } else if ("NAME_TAKEN".equals(response)) {
-                    Platform.runLater(() -> {
-                        Label status = new Label("Имя занято!");
-                        counter.getChildren().add(status);
-                        showConnectionDialog();
-                    });
+                    closeStatusWindow();
+                    showErrorWindow("Имя уже занято!");
+                    Platform.runLater(() -> showConnectionDialog());
+                } else {
+                    closeStatusWindow();
+                    showErrorWindow("Ошибка подключения");
                 }
             } catch (IOException e) {
-                Platform.runLater(() -> {
-                    Label status = new Label("Ошибка подключения");
-                    counter.getChildren().add(status);
-                });
+                closeStatusWindow();
+                showErrorWindow("Сервер не запущен!");
             }
         }).start();
     }
@@ -182,54 +266,88 @@ public class LabController {
     private void handleServerMessage(String msg) {
         Platform.runLater(() -> {
             if (msg.equals("START")) {
+                closeStatusWindow();
                 gameActive = true;
                 isPause = false;
-                if (playerNumber == 1) {
-                    countPoints1 = 0;
-                    shot1 = 0;
+                myScore = 0;
+                myShots = 0;
+                otherPlayerScore = 0;
+                otherPlayerShots = 0;
+
+                if (playerId == 1) {
+                    currentPointForMyArrow.set(new Point(ARROW1_START_X, ARROW1_START_Y));
                     count1.setText("0");
                     counterOfShot1.setText("0");
-                } else {
-                    countPoints2 = 0;
-                    shot2 = 0;
                     count2.setText("0");
                     counterOfShot2.setText("0");
+                } else {
+                    currentPointForMyArrow.set(new Point(ARROW2_START_X, ARROW2_START_Y));
+                    count2.setText("0");
+                    counterOfShot2.setText("0");
+                    count1.setText("0");
+                    counterOfShot1.setText("0");
                 }
                 onStart();
             }
             else if (msg.startsWith("SCORE:")) {
                 String[] parts = msg.split(":");
-                String player = parts[1];
+                int id = Integer.parseInt(parts[1]);
                 int score = Integer.parseInt(parts[2]);
                 int shots = Integer.parseInt(parts[3]);
-                if (player.equals(playerName)) {
-                    if (playerNumber == 1) {
-                        countPoints1 = score;
-                        shot1 = shots;
+                String name = parts[4];
+
+                if (id == playerId) {
+                    myScore = score;
+                    myShots = shots;
+                    if (playerId == 1) {
                         count1.setText(String.valueOf(score));
                         counterOfShot1.setText(String.valueOf(shots));
                     } else {
-                        countPoints2 = score;
-                        shot2 = shots;
                         count2.setText(String.valueOf(score));
                         counterOfShot2.setText(String.valueOf(shots));
+                    }
+                } else {
+                    otherPlayerScore = score;
+                    otherPlayerShots = shots;
+                    otherPlayerName = name;
+                    if (playerId == 1) {
+                        count2.setText(String.valueOf(score));
+                        counterOfShot2.setText(String.valueOf(shots));
+                        nameOfGamer2.setText(name);
+                    } else {
+                        count1.setText(String.valueOf(score));
+                        counterOfShot1.setText(String.valueOf(shots));
+                        nameOfGamer1.setText(name);
+                    }
+                }
+            }
+            else if (msg.startsWith("NEW_PLAYER:")) {
+                String[] parts = msg.split(":");
+                int id = Integer.parseInt(parts[1]);
+                String name = parts[2];
+                if (id != playerId) {
+                    otherPlayerName = name;
+                    if (playerId == 1) {
+                        nameOfGamer2.setText(name);
+                    } else {
+                        nameOfGamer1.setText(name);
                     }
                 }
             }
             else if (msg.startsWith("WINNER:")) {
-                String winner = msg.split(":")[1];
+                int winnerId = Integer.parseInt(msg.split(":")[1]);
                 gameActive = false;
                 isRun = false;
-                Label status = new Label("Победитель: " + winner + "!");
-                counter.getChildren().add(status);
+                String winnerName = (winnerId == playerId) ? playerName : otherPlayerName;
+                showErrorWindow("Победитель: " + winnerName + "!");
                 ready.setDisable(false);
+                resetGame();
             }
             else if (msg.startsWith("STOP:")) {
                 gameActive = false;
                 isRun = false;
                 resetGame();
-                Label status = new Label(msg);
-                counter.getChildren().add(status);
+                showErrorWindow(msg.substring(5));
                 ready.setDisable(false);
             }
         });
@@ -256,7 +374,7 @@ public class LabController {
         threadForCircle = new Thread(() -> {
             isRun = true;
             isPause = false;
-            while (isRun) {
+            while (isRun && gameActive) {
                 next();
                 synchronized (lockObject) {
                     if (isPause) {
@@ -279,73 +397,71 @@ public class LabController {
 
     void resetGame() {
         isRun = false;
-        isFly1 = false;
-        isFly2 = false;
+        isFly = false;
 
         if (threadForCircle != null) {
             threadForCircle.interrupt();
             threadForCircle = null;
         }
-        if (threadForArrow1 != null) {
-            threadForArrow1.interrupt();
-            threadForArrow1 = null;
-        }
-        if (threadForArrow2 != null) {
-            threadForArrow2.interrupt();
-            threadForArrow2 = null;
+        if (threadForArrow != null) {
+            threadForArrow.interrupt();
+            threadForArrow = null;
         }
 
-        if (currentPointForArrow != null) {
-            currentPointForArrow.set(new Point(164, 77));
+        if (playerId == 1) {
+            currentPointForMyArrow.set(new Point(ARROW1_START_X, ARROW1_START_Y));
+        } else {
+            currentPointForMyArrow.set(new Point(ARROW2_START_X, ARROW2_START_Y));
         }
-        if (currentPointForArrow1 != null) {
-            currentPointForArrow1.set(new Point(163, 242));
-        }
+
         if (currentPointForCircleBig != null && currentPointForCircleSmall != null) {
             currentPointForCircleBig.set(new Point(327, 154));
             currentPointForCircleSmall.set(new Point(406, 154));
         }
     }
 
-    void nextFlyStep(AtomicReference<Point> currentArrow, int playerNum, int startX, int startY) {
-        currentArrow.getAndUpdate(point -> {
+    void nextFlyStep() {
+        currentPointForMyArrow.getAndUpdate(point -> {
             double tx = point.x + arrow.getEndX();
             double ty = point.y;
 
+            double startX = (playerId == 1) ? ARROW1_START_X : ARROW2_START_X;
+            double startY = (playerId == 1) ? ARROW1_START_Y : ARROW2_START_Y;
+
             if (tx >= counter.getLayoutX() - LENGTH_OF_ARROW / 2) {
-                if (playerNum == 1) isFly1 = false;
-                else isFly2 = false;
+                isFly = false;
                 return new Point(startX, startY);
             }
 
+            // Попадание в большую мишень
             if (tx >= circleBig.getLayoutX() - circleBig.getRadius() && tx <= circleBig.getLayoutX() + circleBig.getRadius()
                     && ty >= circleBig.getLayoutY() - circleBig.getRadius() && ty <= circleBig.getLayoutY() + circleBig.getRadius()) {
-                if (playerNum == 1) {
-                    countPoints1++;
-                    Platform.runLater(() -> count1.setText(String.valueOf(countPoints1)));
-                    if (out != null) out.println("SHOT:1");
-                } else {
-                    countPoints2++;
-                    Platform.runLater(() -> count2.setText(String.valueOf(countPoints2)));
-                    if (out != null) out.println("SHOT:1");
-                }
-                if (playerNum == 1) isFly1 = false;
-                else isFly2 = false;
+                myScore++;
+                // Отправляем на сервер только очки, выстрел уже был засчитан при нажатии
+                if (out != null) out.println("SHOT:1");
+                Platform.runLater(() -> {
+                    if (playerId == 1) {
+                        count1.setText(String.valueOf(myScore));
+                    } else {
+                        count2.setText(String.valueOf(myScore));
+                    }
+                });
+                isFly = false;
                 return new Point(startX, startY);
             }
+            // Попадание в маленькую мишень
             else if (tx >= circleSmall.getLayoutX() - circleSmall.getRadius() && tx <= circleSmall.getLayoutX() + circleSmall.getRadius()
                     && ty >= circleSmall.getLayoutY() - circleSmall.getRadius() && ty <= circleSmall.getLayoutY() + circleSmall.getRadius()) {
-                if (playerNum == 1) {
-                    countPoints1 += 2;
-                    Platform.runLater(() -> count1.setText(String.valueOf(countPoints1)));
-                    if (out != null) out.println("SHOT:2");
-                } else {
-                    countPoints2 += 2;
-                    Platform.runLater(() -> count2.setText(String.valueOf(countPoints2)));
-                    if (out != null) out.println("SHOT:2");
-                }
-                if (playerNum == 1) isFly1 = false;
-                else isFly2 = false;
+                myScore += 2;
+                if (out != null) out.println("SHOT:2");
+                Platform.runLater(() -> {
+                    if (playerId == 1) {
+                        count1.setText(String.valueOf(myScore));
+                    } else {
+                        count2.setText(String.valueOf(myScore));
+                    }
+                });
+                isFly = false;
                 return new Point(startX, startY);
             } else {
                 tx += STEP_BY_ARROW;
@@ -354,68 +470,56 @@ public class LabController {
         });
     }
 
-    void arrowFlight(int playerNum) {
-        if (playerNum == 1) {
-            if (threadForArrow1 != null) return;
-            isFly1 = true;
-            threadForArrow1 = new Thread(() -> {
-                while (isFly1) {
-                    nextFlyStep(currentPointForArrow, 1, 164, 77);
-                    synchronized (lockObject) {
-                        if (isPause) {
-                            try {
-                                lockObject.wait();
-                            } catch (InterruptedException e) {
-                                return;
-                            }
-                        }
-                    }
-                    try {
-                        Thread.sleep(50);
-                    } catch (InterruptedException e) {
-                        return;
-                    }
-                }
-            });
-            threadForArrow1.start();
-        } else {
-            if (threadForArrow2 != null) return;
-            isFly2 = true;
-            threadForArrow2 = new Thread(() -> {
-                while (isFly2) {
-                    nextFlyStep(currentPointForArrow1, 2, 163, 242);
-                    synchronized (lockObject) {
-                        if (isPause) {
-                            try {
-                                lockObject.wait();
-                            } catch (InterruptedException e) {
-                                return;
-                            }
-                        }
-                    }
-                    try {
-                        Thread.sleep(50);
-                    } catch (InterruptedException e) {
-                        return;
-                    }
-                }
-            });
-            threadForArrow2.start();
+    void arrowFlight() {
+        if (isFly || !gameActive) return;
+
+        if (threadForArrow != null) {
+            threadForArrow.interrupt();
+            threadForArrow = null;
         }
+
+        if (playerId == 1) {
+            currentPointForMyArrow.set(new Point(ARROW1_START_X, ARROW1_START_Y));
+        } else {
+            currentPointForMyArrow.set(new Point(ARROW2_START_X, ARROW2_START_Y));
+        }
+
+        isFly = true;
+        threadForArrow = new Thread(() -> {
+            while (isFly && gameActive) {
+                nextFlyStep();
+                synchronized (lockObject) {
+                    if (isPause) {
+                        try {
+                            lockObject.wait();
+                        } catch (InterruptedException e) {
+                            return;
+                        }
+                    }
+                }
+                try {
+                    Thread.sleep(50);
+                } catch (InterruptedException e) {
+                    return;
+                }
+            }
+            threadForArrow = null;
+        });
+        threadForArrow.start();
     }
 
     @FXML
     void onArcherClicked() {
-        if (!gameActive) return;
-        if (playerNumber == 1) {
-            shot1++;
-            counterOfShot1.setText(String.valueOf(shot1));
-            arrowFlight(1);
+        if (!gameActive || isFly) return;
+        myShots++;
+        // Отправляем выстрел на сервер для учета количества выстрелов
+        if (out != null) out.println("SHOT_COUNT:" + myShots);
+        if (playerId == 1) {
+            counterOfShot1.setText(String.valueOf(myShots));
         } else {
-            shot2++;
-            counterOfShot2.setText(String.valueOf(shot2));
-            arrowFlight(2);
+            counterOfShot2.setText(String.valueOf(myShots));
         }
+        arrowFlight();
     }
 
     @FXML
@@ -423,8 +527,7 @@ public class LabController {
         if (out != null) {
             out.println("READY");
             ready.setDisable(true);
-            Label status = new Label("Ожидание других игроков...");
-            counter.getChildren().add(status);
+            showStatusWindow("Ожидание", "Ожидание готовности других игроков...");
         }
     }
 
@@ -434,6 +537,7 @@ public class LabController {
             out.println("STOP");
         }
         resetGame();
+        closeStatusWindow();
     }
 
     @FXML
@@ -443,11 +547,12 @@ public class LabController {
 
     public void shutdown() {
         isRun = false;
+        isFly = false;
         if (threadForCircle != null) threadForCircle.interrupt();
-        if (threadForArrow1 != null) threadForArrow1.interrupt();
-        if (threadForArrow2 != null) threadForArrow2.interrupt();
+        if (threadForArrow != null) threadForArrow.interrupt();
         if (socket != null) {
             try { socket.close(); } catch (IOException e) {}
         }
+        closeStatusWindow();
     }
 }
