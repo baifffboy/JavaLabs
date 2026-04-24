@@ -7,92 +7,168 @@ import java.util.concurrent.*;
 
 public class Server {
     private static final int PORT = 12345;
+    private static final int MAX_PLAYERS = 4;
     private ServerSocket serverSocket;
     private List<ClientHandler> clients = new CopyOnWriteArrayList<>();
-    private boolean gameRunning = false;
+    private Map<Integer, List<ClientHandler>> gameRooms = new ConcurrentHashMap<>();
+    private Map<Integer, Boolean> roomGameActive = new ConcurrentHashMap<>();
 
     public void start() {
         try {
             serverSocket = new ServerSocket(PORT);
-            System.out.println("Сервер запущен");
+            System.out.println("Сервер запущен на порту " + PORT);
+            System.out.println("Максимум игроков: " + MAX_PLAYERS);
 
             while (true) {
                 Socket socket = serverSocket.accept();
-                if (clients.size() >= 4) {
-                    new PrintWriter(socket.getOutputStream(), true).println("FULL");
+                System.out.println("Новое подключение!");
+
+                if (clients.size() >= MAX_PLAYERS) {
+                    PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
+                    out.println("SERVER_FULL");
                     socket.close();
+                    System.out.println("Сервер заполнен, отказ");
                     continue;
                 }
+
                 ClientHandler handler = new ClientHandler(socket, this);
                 clients.add(handler);
                 new Thread(handler).start();
             }
-        } catch (IOException e) {}
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
-    public void broadcast(String msg, ClientHandler exclude) {
-        for (ClientHandler c : clients) {
-            if (c != exclude) {
+    public synchronized void broadcastToRoom(int roomId, String msg, ClientHandler exclude) {
+        List<ClientHandler> room = gameRooms.get(roomId);
+        if (room != null) {
+            for (ClientHandler c : room) {
+                if (c != exclude) {
+                    c.send(msg);
+                }
+            }
+        }
+    }
+
+    public synchronized void broadcastToRoom(int roomId, String msg) {
+        List<ClientHandler> room = gameRooms.get(roomId);
+        if (room != null) {
+            for (ClientHandler c : room) {
                 c.send(msg);
             }
         }
     }
 
-    public void broadcast(String msg) {
-        for (ClientHandler c : clients) {
-            c.send(msg);
-        }
-    }
-
-    public void remove(ClientHandler c) {
+    public synchronized void remove(ClientHandler c) {
         clients.remove(c);
-        if (gameRunning) broadcast("STOP:Игрок отключился");
-    }
-
-    public void checkStart() {
-        if (gameRunning) return;
-        int readyCount = 0;
-        for (ClientHandler c : clients) {
-            if (c.ready) readyCount++;
-        }
-        if (readyCount == clients.size() && clients.size() >= 2) {
-            gameRunning = true;
-            for (ClientHandler c : clients) {
-                c.score = 0;
-                c.shots = 0;
-                c.send("SCORE:" + c.id + ":" + c.score + ":" + c.shots + ":" + c.name);
+        if (c.roomId != -1) {
+            List<ClientHandler> room = gameRooms.get(c.roomId);
+            if (room != null) {
+                room.remove(c);
+                if (room.isEmpty()) {
+                    gameRooms.remove(c.roomId);
+                    roomGameActive.remove(c.roomId);
+                } else {
+                    broadcastToRoom(c.roomId, "PLAYER_LEFT:" + c.name);
+                    for (ClientHandler remaining : room) {
+                        remaining.ready = false;
+                        remaining.gameActive = false;
+                    }
+                }
             }
-            broadcast("START");
-            System.out.println("Игра началась!");
+        }
+        System.out.println("Игрок " + c.name + " отключился. Осталось: " + clients.size());
+    }
+
+    public synchronized void checkAndStartGame(int roomId) {
+        List<ClientHandler> room = gameRooms.get(roomId);
+        if (room == null) return;
+
+        ClientHandler player1 = null;
+        ClientHandler player2 = null;
+        for (ClientHandler c : room) {
+            if (c.id == 1) player1 = c;
+            if (c.id == 2) player2 = c;
+        }
+
+        if (player1 == null || player2 == null) {
+            System.out.println("В комнате " + roomId + " нет обоих игроков");
+            return;
+        }
+
+        System.out.println("=== Проверка комнаты " + roomId + " ===");
+        System.out.println("  Игрок1 (ID=1): " + player1.name + " готов=" + player1.ready);
+        System.out.println("  Игрок2 (ID=2): " + player2.name + " готов=" + player2.ready);
+
+        if (player1.ready && player2.ready && !roomGameActive.getOrDefault(roomId, false)) {
+            System.out.println(">>> ЗАПУСК ИГРЫ в комнате " + roomId + "! <<<");
+            roomGameActive.put(roomId, true);
+
+            player1.score = 0;
+            player1.shots = 0;
+            player1.gameActive = true;
+            player1.ready = false;
+
+            player2.score = 0;
+            player2.shots = 0;
+            player2.gameActive = true;
+            player2.ready = false;
+
+            player1.send("OPPONENT:" + player2.name);
+            player2.send("OPPONENT:" + player1.name);
+
+            player1.send("SCORE:" + player1.id + ":0:0:" + player1.name);
+            player2.send("SCORE:" + player1.id + ":0:0:" + player1.name);
+            player1.send("SCORE:" + player2.id + ":0:0:" + player2.name);
+            player2.send("SCORE:" + player2.id + ":0:0:" + player2.name);
+
+            player1.send("START");
+            player2.send("START");
         }
     }
 
-    public void handleShot(String player, int points, ClientHandler shooter) {
-        if (!gameRunning) return;
+    public synchronized void handleShot(int roomId, String player, int points, ClientHandler shooter) {
+        if (!roomGameActive.getOrDefault(roomId, false)) return;
+
         shooter.score += points;
-        // shots обновляется отдельно через SHOT_COUNT
-        broadcast("SCORE:" + shooter.id + ":" + shooter.score + ":" + shooter.shots + ":" + player);
+        broadcastToRoom(roomId, "SCORE:" + shooter.id + ":" + shooter.score + ":" + shooter.shots + ":" + player);
         System.out.println("Попадание от " + player + " (+" + points + ")");
 
         if (shooter.score >= 6) {
-            gameRunning = false;
-            broadcast("WINNER:" + shooter.id);
+            roomGameActive.put(roomId, false);
+            broadcastToRoom(roomId, "WINNER:" + shooter.id);
             System.out.println("Победитель: " + player);
-            for (ClientHandler c : clients) c.ready = false;
+
+            List<ClientHandler> room = gameRooms.get(roomId);
+            if (room != null) {
+                for (ClientHandler c : room) {
+                    c.gameActive = false;
+                    c.ready = false;
+                }
+            }
         }
     }
 
-    public void handleShotCount(int shots, ClientHandler shooter) {
-        if (!gameRunning) return;
+    public synchronized void handleShotCount(int roomId, int shots, ClientHandler shooter) {
+        if (!roomGameActive.getOrDefault(roomId, false)) return;
+
         shooter.shots = shots;
-        broadcast("SCORE:" + shooter.id + ":" + shooter.score + ":" + shooter.shots + ":" + shooter.name);
+        broadcastToRoom(roomId, "SCORE:" + shooter.id + ":" + shooter.score + ":" + shooter.shots + ":" + shooter.name);
     }
 
-    public void handleStop() {
-        if (gameRunning) {
-            gameRunning = false;
-            broadcast("STOP:Игра остановлена");
-            for (ClientHandler c : clients) c.ready = false;
+    public synchronized void handleStop(int roomId, String playerName) {
+        if (roomGameActive.getOrDefault(roomId, false)) {
+            roomGameActive.put(roomId, false);
+            broadcastToRoom(roomId, "STOP:" + playerName + " остановил игру");
+
+            List<ClientHandler> room = gameRooms.get(roomId);
+            if (room != null) {
+                for (ClientHandler c : room) {
+                    c.gameActive = false;
+                    c.ready = false;
+                }
+            }
         }
     }
 
@@ -103,7 +179,9 @@ public class Server {
         private Server server;
         private String name;
         private int id;
+        private int roomId = -1;
         private boolean ready = false;
+        private boolean gameActive = false;
         private int score = 0;
         private int shots = 0;
 
@@ -120,51 +198,93 @@ public class Server {
                 String[] parts = line.split(":");
                 name = parts[0];
                 id = Integer.parseInt(parts[1]);
+                int requestedRoom = Integer.parseInt(parts[2]);
 
-                boolean nameTaken = false;
-                for (ClientHandler c : server.clients) {
-                    if (c.name != null && c.name.equals(name) && c != this) {
-                        nameTaken = true;
-                        break;
-                    }
-                }
-                if (nameTaken) {
-                    out.println("NAME_TAKEN");
+                System.out.println("Подключение: " + name + ", ID=" + id + ", комната=" + requestedRoom);
+
+                // Проверка: существует ли уже комната?
+                List<ClientHandler> room = server.gameRooms.get(requestedRoom);
+
+                // Проверка: комната заполнена?
+                if (room != null && room.size() >= 2) {
+                    out.println("ROOM_FULL");
                     socket.close();
+                    System.out.println("Комната " + requestedRoom + " заполнена");
                     return;
                 }
-                out.println("OK:" + id);
-                System.out.println("Игрок " + name + " (ID:" + id + ") подключен");
 
-                for (ClientHandler c : server.clients) {
+                // Проверка: в комнате уже есть игрок с таким ID?
+                if (room != null) {
+                    for (ClientHandler c : room) {
+                        if (c.id == id) {
+                            out.println("ID_TAKEN");
+                            socket.close();
+                            System.out.println("В комнате уже есть игрок с ID=" + id);
+                            return;
+                        }
+                    }
+                }
+
+                // Проверка уникальности имени ТОЛЬКО в этой комнате
+                if (room != null) {
+                    for (ClientHandler c : room) {
+                        if (c.name != null && c.name.equals(name)) {
+                            out.println("NAME_TAKEN");
+                            socket.close();
+                            System.out.println("Имя " + name + " уже занято в комнате " + requestedRoom);
+                            return;
+                        }
+                    }
+                }
+
+                roomId = requestedRoom;
+                server.gameRooms.computeIfAbsent(roomId, k -> new CopyOnWriteArrayList<>()).add(this);
+                server.roomGameActive.putIfAbsent(roomId, false);
+
+                out.println("OK:" + id + ":" + roomId);
+                System.out.println("Игрок " + name + " (ID:" + id + ") подключен в комнату " + roomId);
+
+                // Отправляем информацию о других игроках
+                List<ClientHandler> currentRoom = server.gameRooms.get(roomId);
+                for (ClientHandler c : currentRoom) {
                     if (c != this && c.name != null) {
                         out.println("NEW_PLAYER:" + c.id + ":" + c.name);
                         out.println("SCORE:" + c.id + ":" + c.score + ":" + c.shots + ":" + c.name);
                     }
                 }
-                server.broadcast("NEW_PLAYER:" + id + ":" + name, this);
+
+                // Уведомляем других
+                for (ClientHandler c : currentRoom) {
+                    if (c != this) {
+                        c.send("NEW_PLAYER:" + id + ":" + name);
+                        c.send("SCORE:" + id + ":" + score + ":" + shots + ":" + name);
+                    }
+                }
 
                 String msg;
                 while ((msg = in.readLine()) != null) {
+                    System.out.println("От " + name + ": " + msg);
+
                     if (msg.equals("READY")) {
                         ready = true;
-                        System.out.println(name + " готов");
-                        server.checkStart();
+                        System.out.println(name + " готов!");
+                        server.checkAndStartGame(roomId);
                     }
                     else if (msg.startsWith("SHOT:")) {
                         int points = Integer.parseInt(msg.split(":")[1]);
-                        server.handleShot(name, points, this);
+                        server.handleShot(roomId, name, points, this);
                     }
                     else if (msg.startsWith("SHOT_COUNT:")) {
                         int shots = Integer.parseInt(msg.split(":")[1]);
-                        server.handleShotCount(shots, this);
+                        server.handleShotCount(roomId, shots, this);
                     }
                     else if (msg.equals("STOP")) {
-                        server.handleStop();
+                        server.handleStop(roomId, name);
                     }
                 }
-            } catch (IOException e) {}
-            finally {
+            } catch (IOException e) {
+                System.out.println(name + " отключился");
+            } finally {
                 server.remove(this);
                 try { socket.close(); } catch (IOException e) {}
             }

@@ -29,8 +29,8 @@ public class LabController {
     @FXML private AnchorPane pane;
     @FXML private Line lineSmall;
     @FXML private Line lineBig;
-    @FXML private Line arrow;      // Стрела игрока 1
-    @FXML private Line arrow1;     // Стрела игрока 2
+    @FXML private Line arrow;
+    @FXML private Line arrow1;
     @FXML private Polyline archer;
     @FXML private Polyline archer1;
     @FXML private Pane counter;
@@ -49,6 +49,7 @@ public class LabController {
     private BufferedReader in;
     private String playerName;
     private int playerId;
+    private int roomNumber;
     private boolean gameActive = false;
     private Stage statusStage;
     private Label statusLabel;
@@ -181,28 +182,49 @@ public class LabController {
     }
 
     private void showConnectionDialog() {
-        TextInputDialog numDialog = new TextInputDialog("1");
-        numDialog.setTitle("Номер игрока");
-        numDialog.setHeaderText("Выберите номер игрока (1 или 2)");
-        numDialog.setContentText("Номер:");
+        // Диалог для выбора номера комнаты
+        TextInputDialog roomDialog = new TextInputDialog("1");
+        roomDialog.setTitle("Выбор комнаты");
+        roomDialog.setHeaderText("Введите номер комнаты (1 или 2)");
+        roomDialog.setContentText("Номер комнаты:");
 
-        Optional<String> numResult = numDialog.showAndWait();
-        if (numResult.isPresent()) {
+        Optional<String> roomResult = roomDialog.showAndWait();
+        if (roomResult.isPresent()) {
             try {
-                playerId = Integer.parseInt(numResult.get());
+                roomNumber = Integer.parseInt(roomResult.get());
+                if (roomNumber != 1 && roomNumber != 2) roomNumber = 1;
+            } catch (NumberFormatException e) {
+                roomNumber = 1;
+            }
+        } else {
+            roomNumber = 1;
+        }
+
+        // Диалог для выбора ID игрока (1 или 2 в комнате)
+        TextInputDialog idDialog = new TextInputDialog("1");
+        idDialog.setTitle("Выбор игрока");
+        idDialog.setHeaderText("Выберите номер игрока в комнате (1 или 2)");
+        idDialog.setContentText("Номер игрока:");
+
+        Optional<String> idResult = idDialog.showAndWait();
+        if (idResult.isPresent()) {
+            try {
+                playerId = Integer.parseInt(idResult.get());
                 if (playerId != 1 && playerId != 2) playerId = 1;
             } catch (NumberFormatException e) {
                 playerId = 1;
             }
+        } else {
+            playerId = 1;
         }
 
-        TextInputDialog dialog = new TextInputDialog("Игрок" + playerId);
-        dialog.setTitle("Подключение");
-        dialog.setHeaderText("Введите имя игрока");
-        dialog.setContentText("Имя:");
+        TextInputDialog nameDialog = new TextInputDialog("Игрок" + playerId);
+        nameDialog.setTitle("Подключение");
+        nameDialog.setHeaderText("Введите имя игрока");
+        nameDialog.setContentText("Имя:");
 
-        Optional<String> result = dialog.showAndWait();
-        playerName = result.orElse("Игрок" + playerId);
+        Optional<String> nameResult = nameDialog.showAndWait();
+        playerName = nameResult.orElse("Игрок" + playerId);
         if (playerName.trim().isEmpty()) playerName = "Игрок" + playerId;
 
         connectToServer();
@@ -217,12 +239,13 @@ public class LabController {
                 out = new PrintWriter(socket.getOutputStream(), true);
                 in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
 
-                out.println(playerName + ":" + playerId);
+                out.println(playerName + ":" + playerId + ":" + roomNumber);
                 String response = in.readLine();
 
                 if (response != null && response.startsWith("OK:")) {
-                    int assignedId = Integer.parseInt(response.split(":")[1]);
-                    playerId = assignedId;
+                    String[] parts = response.split(":");
+                    playerId = Integer.parseInt(parts[1]);
+                    roomNumber = Integer.parseInt(parts[2]);
 
                     if (playerId == 1) {
                         currentPointForMyArrow = new AtomicReference<>(new Point(ARROW1_START_X, ARROW1_START_Y));
@@ -242,7 +265,7 @@ public class LabController {
                         ready.setDisable(false);
                     });
 
-                    showStatusWindow("Ожидание игроков", "Ожидание готовности других игроков...\nНажмите 'Готов', когда будете готовы");
+                    showStatusWindow("Ожидание игроков", "Ожидание готовности других игроков...\nНажмите 'Готов'");
 
                     String msg;
                     while ((msg = in.readLine()) != null) {
@@ -250,8 +273,19 @@ public class LabController {
                     }
                 } else if ("NAME_TAKEN".equals(response)) {
                     closeStatusWindow();
-                    showErrorWindow("Имя уже занято!");
+                    showErrorWindow("Имя уже занято в этой комнате!");
                     Platform.runLater(() -> showConnectionDialog());
+                } else if ("ROOM_FULL".equals(response)) {
+                    closeStatusWindow();
+                    showErrorWindow("Комната " + roomNumber + " заполнена! (2 игрока уже есть)");
+                    Platform.runLater(() -> showConnectionDialog());
+                } else if ("ID_TAKEN".equals(response)) {
+                    closeStatusWindow();
+                    showErrorWindow("Игрок с номером " + playerId + " уже есть в этой комнате!");
+                    Platform.runLater(() -> showConnectionDialog());
+                } else if ("SERVER_FULL".equals(response)) {
+                    closeStatusWindow();
+                    showErrorWindow("Сервер заполнен! Максимум 4 игрока.");
                 } else {
                     closeStatusWindow();
                     showErrorWindow("Ошибка подключения");
@@ -265,6 +299,8 @@ public class LabController {
 
     private void handleServerMessage(String msg) {
         Platform.runLater(() -> {
+            System.out.println("Клиент получил: " + msg);
+
             if (msg.equals("START")) {
                 closeStatusWindow();
                 gameActive = true;
@@ -280,14 +316,25 @@ public class LabController {
                     counterOfShot1.setText("0");
                     count2.setText("0");
                     counterOfShot2.setText("0");
+                    nameOfGamer1.setText(playerName);
                 } else {
                     currentPointForMyArrow.set(new Point(ARROW2_START_X, ARROW2_START_Y));
                     count2.setText("0");
                     counterOfShot2.setText("0");
                     count1.setText("0");
                     counterOfShot1.setText("0");
+                    nameOfGamer2.setText(playerName);
                 }
                 onStart();
+            }
+            else if (msg.startsWith("OPPONENT:")) {
+                String opponentName = msg.substring(9);
+                System.out.println("Имя противника: " + opponentName);
+                if (playerId == 1) {
+                    nameOfGamer2.setText(opponentName);
+                } else {
+                    nameOfGamer1.setText(opponentName);
+                }
             }
             else if (msg.startsWith("SCORE:")) {
                 String[] parts = msg.split(":");
@@ -309,15 +356,12 @@ public class LabController {
                 } else {
                     otherPlayerScore = score;
                     otherPlayerShots = shots;
-                    otherPlayerName = name;
                     if (playerId == 1) {
                         count2.setText(String.valueOf(score));
                         counterOfShot2.setText(String.valueOf(shots));
-                        nameOfGamer2.setText(name);
                     } else {
                         count1.setText(String.valueOf(score));
                         counterOfShot1.setText(String.valueOf(shots));
-                        nameOfGamer1.setText(name);
                     }
                 }
             }
@@ -325,6 +369,8 @@ public class LabController {
                 String[] parts = msg.split(":");
                 int id = Integer.parseInt(parts[1]);
                 String name = parts[2];
+                System.out.println("Новый игрок: id=" + id + " name=" + name);
+
                 if (id != playerId) {
                     otherPlayerName = name;
                     if (playerId == 1) {
@@ -338,7 +384,8 @@ public class LabController {
                 int winnerId = Integer.parseInt(msg.split(":")[1]);
                 gameActive = false;
                 isRun = false;
-                String winnerName = (winnerId == playerId) ? playerName : otherPlayerName;
+                String winnerName = (winnerId == playerId) ? playerName :
+                        (playerId == 1 ? nameOfGamer2.getText() : nameOfGamer1.getText());
                 showErrorWindow("Победитель: " + winnerName + "!");
                 ready.setDisable(false);
                 resetGame();
@@ -353,6 +400,7 @@ public class LabController {
         });
     }
 
+    // Остальные методы (next, onStart, resetGame, nextFlyStep, arrowFlight, onArcherClicked, onReady, onStop, onShot, shutdown) остаются без изменений
     void next() {
         currentPointForCircleBig.getAndUpdate(point -> {
             double ty = point.y;
@@ -433,11 +481,9 @@ public class LabController {
                 return new Point(startX, startY);
             }
 
-            // Попадание в большую мишень
             if (tx >= circleBig.getLayoutX() - circleBig.getRadius() && tx <= circleBig.getLayoutX() + circleBig.getRadius()
                     && ty >= circleBig.getLayoutY() - circleBig.getRadius() && ty <= circleBig.getLayoutY() + circleBig.getRadius()) {
                 myScore++;
-                // Отправляем на сервер только очки, выстрел уже был засчитан при нажатии
                 if (out != null) out.println("SHOT:1");
                 Platform.runLater(() -> {
                     if (playerId == 1) {
@@ -449,7 +495,6 @@ public class LabController {
                 isFly = false;
                 return new Point(startX, startY);
             }
-            // Попадание в маленькую мишень
             else if (tx >= circleSmall.getLayoutX() - circleSmall.getRadius() && tx <= circleSmall.getLayoutX() + circleSmall.getRadius()
                     && ty >= circleSmall.getLayoutY() - circleSmall.getRadius() && ty <= circleSmall.getLayoutY() + circleSmall.getRadius()) {
                 myScore += 2;
@@ -512,7 +557,6 @@ public class LabController {
     void onArcherClicked() {
         if (!gameActive || isFly) return;
         myShots++;
-        // Отправляем выстрел на сервер для учета количества выстрелов
         if (out != null) out.println("SHOT_COUNT:" + myShots);
         if (playerId == 1) {
             counterOfShot1.setText(String.valueOf(myShots));
@@ -527,7 +571,7 @@ public class LabController {
         if (out != null) {
             out.println("READY");
             ready.setDisable(true);
-            showStatusWindow("Ожидание", "Ожидание готовности других игроков...");
+            showStatusWindow("Ожидание", "Ожидание другого игрока...");
         }
     }
 
