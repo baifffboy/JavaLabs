@@ -12,12 +12,14 @@ public class Server {
     private List<ClientHandler> clients = new CopyOnWriteArrayList<>();
     private Map<Integer, List<ClientHandler>> gameRooms = new ConcurrentHashMap<>();
     private Map<Integer, Boolean> roomGameActive = new ConcurrentHashMap<>();
+    private Set<String> activeNames = new HashSet<>();
 
     public void start() {
         try {
             serverSocket = new ServerSocket(PORT);
             System.out.println("Сервер запущен на порту " + PORT);
             System.out.println("Максимум игроков: " + MAX_PLAYERS);
+            System.out.println("Свободно мест: " + (MAX_PLAYERS - clients.size()));
 
             while (true) {
                 Socket socket = serverSocket.accept();
@@ -27,13 +29,14 @@ public class Server {
                     PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
                     out.println("SERVER_FULL");
                     socket.close();
-                    System.out.println("Сервер заполнен, отказ");
+                    System.out.println("Сервер заполнен, отказ. Свободно мест: 0");
                     continue;
                 }
 
                 ClientHandler handler = new ClientHandler(socket, this);
                 clients.add(handler);
                 new Thread(handler).start();
+                System.out.println("Свободно мест: " + (MAX_PLAYERS - clients.size()));
             }
         } catch (IOException e) {
             e.printStackTrace();
@@ -62,13 +65,19 @@ public class Server {
 
     public synchronized void remove(ClientHandler c) {
         clients.remove(c);
+        if (c.name != null) {
+            activeNames.remove(c.name);
+        }
+
         if (c.roomId != -1) {
             List<ClientHandler> room = gameRooms.get(c.roomId);
             if (room != null) {
                 room.remove(c);
+                System.out.println("Игрок " + c.name + " покинул комнату " + c.roomId);
                 if (room.isEmpty()) {
                     gameRooms.remove(c.roomId);
                     roomGameActive.remove(c.roomId);
+                    System.out.println("Комната " + c.roomId + " удалена");
                 } else {
                     broadcastToRoom(c.roomId, "PLAYER_LEFT:" + c.name);
                     for (ClientHandler remaining : room) {
@@ -79,6 +88,7 @@ public class Server {
             }
         }
         System.out.println("Игрок " + c.name + " отключился. Осталось: " + clients.size());
+        System.out.println("Свободно мест: " + (MAX_PLAYERS - clients.size()));
     }
 
     public synchronized void checkAndStartGame(int roomId) {

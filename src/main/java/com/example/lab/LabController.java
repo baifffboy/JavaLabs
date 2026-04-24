@@ -185,7 +185,7 @@ public class LabController {
         // Диалог для выбора номера комнаты
         TextInputDialog roomDialog = new TextInputDialog("1");
         roomDialog.setTitle("Выбор комнаты");
-        roomDialog.setHeaderText("Введите номер комнаты (1 или 2)");
+        roomDialog.setHeaderText("Введите номер комнаты - у игроков одной игры номер должен совпадать");
         roomDialog.setContentText("Номер комнаты:");
 
         Optional<String> roomResult = roomDialog.showAndWait();
@@ -271,6 +271,9 @@ public class LabController {
                     while ((msg = in.readLine()) != null) {
                         handleServerMessage(msg);
                     }
+                } else if ("SERVER_FULL".equals(response)) {
+                    closeStatusWindow();
+                    showErrorWindow("На сервере достигнуто максимальное количество игроков - 4");
                 } else if ("NAME_TAKEN".equals(response)) {
                     closeStatusWindow();
                     showErrorWindow("Имя уже занято в этой комнате!");
@@ -283,12 +286,9 @@ public class LabController {
                     closeStatusWindow();
                     showErrorWindow("Игрок с номером " + playerId + " уже есть в этой комнате!");
                     Platform.runLater(() -> showConnectionDialog());
-                } else if ("SERVER_FULL".equals(response)) {
-                    closeStatusWindow();
-                    showErrorWindow("Сервер заполнен! Максимум 4 игрока.");
                 } else {
                     closeStatusWindow();
-                    showErrorWindow("Ошибка подключения");
+                    showErrorWindow("Ошибка подключения: " + response);
                 }
             } catch (IOException e) {
                 closeStatusWindow();
