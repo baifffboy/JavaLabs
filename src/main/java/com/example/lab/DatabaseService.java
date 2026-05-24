@@ -47,10 +47,11 @@ public class DatabaseService {
                     em.persist(player);
                 } else {
                     player = results.get(0);
-                    player.setWins(player.getWins() + 1);
-                    em.merge(player);
+                    int currentWins = player.getWins();
+                    player.setWins(currentWins + 1);
                 }
                 em.getTransaction().commit();
+
             } catch (Exception e) {
                 if (em.getTransaction().isActive()) {
                     em.getTransaction().rollback();
@@ -103,6 +104,8 @@ public class DatabaseService {
             try {
                 em.getTransaction().begin();
                 Query deleteQuery = em.createQuery("DELETE FROM Player");
+                int deletedCount = deleteQuery.executeUpdate(); // ВАЖНО: вызвать executeUpdate()
+                System.out.println("Удалено игроков: " + deletedCount);
                 em.getTransaction().commit();
             } catch (Exception e) {
                 if (em.getTransaction().isActive()) {
@@ -110,7 +113,6 @@ public class DatabaseService {
                 }
                 System.err.println("Ошибка при сбросе таблицы: " + e.getMessage());
                 e.printStackTrace();
-                throw e;
             } finally {
                 em.close();
             }
@@ -144,8 +146,10 @@ public class DatabaseService {
                     em.persist(player);
                 } else {
                     Player player = results.get(0);
-                    player.setWins(wins);
-                    em.merge(player);
+                    if (wins > 0) {
+                        player.setWins(wins);
+                        em.merge(player);
+                    }
                 }
                 em.getTransaction().commit();
             } catch (Exception e) {

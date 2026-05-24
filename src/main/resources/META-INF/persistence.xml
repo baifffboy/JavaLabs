@@ -7,12 +7,12 @@
         <class>com.example.lab.Player</class>
         <properties>
             <property name="jakarta.persistence.jdbc.driver" value="org.h2.Driver"/>
-            <property name="jakarta.persistence.jdbc.url" value="jdbc:h2:./gameDB;DB_CLOSE_DELAY=-1;AUTO_RECONNECT=TRUE;DB_CLOSE_ON_EXIT=FALSE"/>
+            <property name="jakarta.persistence.jdbc.url" value="jdbc:h2:tcp://localhost:9092/~/shared_game_db;DB_CLOSE_DELAY=-1"/>
             <property name="jakarta.persistence.jdbc.user" value="sa"/>
             <property name="jakarta.persistence.jdbc.password" value=""/>
             <property name="hibernate.hbm2ddl.auto" value="update"/>
             <property name="hibernate.show_sql" value="false"/>
-            <property name="hibernate.connection.pool_size" value="1"/>
+            <property name="hibernate.connection.pool_size" value="5"/>
             <property name="hibernate.connection.autocommit" value="false"/>
         </properties>
     </persistence-unit>

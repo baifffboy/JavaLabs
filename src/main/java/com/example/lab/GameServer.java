@@ -6,6 +6,7 @@ import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.sql.SQLException;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -13,7 +14,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
-public class Server {
+public class GameServer {
     private static final int PORT = 12345;
     private static final int MAX_PLAYERS = 4;
     private ServerSocket serverSocket;
@@ -21,8 +22,12 @@ public class Server {
     private final Map<Integer, List<ClientHandler>> gameRooms = new ConcurrentHashMap<>();
     private final Map<Integer, Boolean> roomGameActive = new ConcurrentHashMap<>();
     private final Set<String> activeNames = new HashSet<>();
+    private static org.h2.tools.Server h2TcpServer;
+    private static org.h2.tools.Server h2WebServer;
 
     public void start() {
+        startH2Database();
+
         try {
             serverSocket = new ServerSocket(PORT);
 
@@ -42,6 +47,37 @@ public class Server {
             }
         } catch (IOException e) {
             e.printStackTrace();
+        }
+    }
+
+    private void startH2Database() {
+        try {
+            h2TcpServer = org.h2.tools.Server.createTcpServer(
+                    "-tcpPort", "9092",
+                    "-tcpAllowOthers",
+                    "-tcpDaemon",
+                    "-ifNotExists"
+            );
+            h2TcpServer.start();
+
+            h2WebServer = org.h2.tools.Server.createWebServer(
+                    "-webPort", "8082",
+                    "-webAllowOthers"
+            );
+            h2WebServer.start();
+
+        } catch (SQLException e) {
+            System.err.println("Failed to start H2 server: " + e.getMessage());
+            throw new RuntimeException("Cannot start H2 database", e);
+        }
+    }
+
+    private void stopH2Database() {
+        if (h2TcpServer != null) {
+            h2TcpServer.stop();
+        }
+        if (h2WebServer != null) {
+            h2WebServer.stop();
         }
     }
 
@@ -140,6 +176,13 @@ public class Server {
             roomGameActive.put(roomId, false);
             broadcastToRoom(roomId, "WINNER:" + shooter.id);
 
+            try {
+                DatabaseService.incrementWins(shooter.name);
+                System.out.println("✓ Победа сохранена: " + shooter.name);
+            } catch (Exception e) {
+                System.err.println("Ошибка сохранения победы: " + e.getMessage());
+            }
+
             List<ClientHandler> room = gameRooms.get(roomId);
             if (room != null) {
                 for (ClientHandler c : room) {
@@ -176,7 +219,7 @@ public class Server {
         private final Socket socket;
         private final PrintWriter out;
         private final BufferedReader in;
-        private final Server server;
+        private final GameServer server;
         private String name;
         private int id;
         private int roomId = -1;
@@ -185,7 +228,7 @@ public class Server {
         private int score = 0;
         private int shots = 0;
 
-        ClientHandler(Socket s, Server server) throws IOException {
+        ClientHandler(Socket s, GameServer server) throws IOException {
             this.socket = s;
             this.server = server;
             this.out = new PrintWriter(s.getOutputStream(), true);
@@ -289,6 +332,12 @@ public class Server {
     }
 
     public static void main(String[] args) {
-        new Server().start();
+        final GameServer server = new GameServer();
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            server.stopH2Database();
+            DatabaseService.shutdown();
+        }));
+
+        server.start();
     }
 }

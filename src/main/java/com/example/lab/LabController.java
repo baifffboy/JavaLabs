@@ -433,23 +433,6 @@ public class LabController {
                 String winnerName = (winnerId == playerId) ? playerName :
                         (playerId == 1 ? nameOfGamer2.getText() : nameOfGamer1.getText());
 
-                final String finalWinnerName = winnerName;
-                Thread saveThread = new Thread(() -> {
-                    try {
-                        DatabaseService.incrementWins(finalWinnerName);
-                    } catch (Exception e) {
-                        System.err.println("Ошибка сохранения победы: " + e.getMessage());
-                        e.printStackTrace();
-                    }
-                });
-                saveThread.start();
-
-                try {
-                    saveThread.join(2000);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                }
-
                 Platform.runLater(() -> {
                     showErrorWindow("Победитель: " + winnerName + "!");
                 });
@@ -810,7 +793,6 @@ public class LabController {
         threadForEnemyArrow = new Thread(() -> {
             while (isEnemyFlying && gameActive && !isTablePaused) {
                 nextEnemyFlyStep();
-                // Проверяем паузу внутри цикла
                 if (isTablePaused) {
                     synchronized (arrowLock) {
                         try {

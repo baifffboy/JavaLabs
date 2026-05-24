@@ -7,6 +7,7 @@ module com.example.lab {
     requires jakarta.persistence;
     requires java.sql;
     requires org.hibernate.orm.core;
+    requires com.h2database;
 
     opens com.example.lab to javafx.fxml, org.hibernate.orm.core;
     exports com.example.lab;
