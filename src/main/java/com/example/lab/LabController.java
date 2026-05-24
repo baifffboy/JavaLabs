@@ -21,6 +21,7 @@ import javafx.geometry.Pos;
 import java.io.*;
 import java.net.*;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 public class LabController {
@@ -43,6 +44,7 @@ public class LabController {
     @FXML private Button ready;
     @FXML private Button stop;
     @FXML private Button shot;
+    @FXML private Button table_of_result;
 
     private Socket socket;
     private PrintWriter out;
@@ -53,6 +55,10 @@ public class LabController {
     private boolean gameActive = false;
     private Stage statusStage;
     private Label statusLabel;
+
+    // Упрощенная система паузы
+    private boolean isTablePaused = false;
+    private final Object pauseLock = new Object();
 
     private String otherPlayerName = "";
     private int otherPlayerScore = 0;
@@ -318,6 +324,7 @@ public class LabController {
                 closeStatusWindow();
                 gameActive = true;
                 isPause = false;
+                isTablePaused = false;
                 myScore = 0;
                 myShots = 0;
                 otherPlayerScore = 0;
@@ -397,23 +404,95 @@ public class LabController {
                 int winnerId = Integer.parseInt(msg.split(":")[1]);
                 gameActive = false;
                 isRun = false;
+                isFly = false;
+                isEnemyFlying = false;
+
                 String winnerName = (winnerId == playerId) ? playerName :
                         (playerId == 1 ? nameOfGamer2.getText() : nameOfGamer1.getText());
-                showErrorWindow("Победитель: " + winnerName + "!");
-                ready.setDisable(false);
+
+                // Сохраняем победу в БД синхронно (но в отдельном потоке с ожиданием)
+                final String finalWinnerName = winnerName;
+                Thread saveThread = new Thread(() -> {
+                    try {
+                        DatabaseService.incrementWins(finalWinnerName);
+                        System.out.println("Победа сохранена для " + finalWinnerName);
+                    } catch (Exception e) {
+                        System.err.println("Ошибка сохранения победы: " + e.getMessage());
+                        e.printStackTrace();
+                    }
+                });
+                saveThread.start();
+
+                // Ждем сохранения не более 2 секунд
+                try {
+                    saveThread.join(2000);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+
+                Platform.runLater(() -> {
+                    showErrorWindow("Победитель: " + winnerName + "!");
+                });
+
+                // Сброс игры
                 resetGame();
+                ready.setDisable(false);
+
+                // Останавливаем все потоки
+                if (threadForCircle != null) {
+                    threadForCircle.interrupt();
+                    threadForCircle = null;
+                }
+                if (threadForArrow != null) {
+                    threadForArrow.interrupt();
+                    threadForArrow = null;
+                }
+                if (threadForEnemyArrow != null) {
+                    threadForEnemyArrow.interrupt();
+                    threadForEnemyArrow = null;
+                }
             }
             else if (msg.startsWith("STOP:")) {
                 gameActive = false;
                 isRun = false;
+                isFly = false;
+                isEnemyFlying = false;
                 resetGame();
                 showErrorWindow(msg.substring(5));
                 ready.setDisable(false);
             }
             else if (msg.startsWith("ENEMY_SHOT:")) {
-                String[] parts = msg.split(":");
-                int enemyId = Integer.parseInt(parts[1]);
-                startEnemyArrowFlight();
+                if (gameActive && !isPause) {
+                    startEnemyArrowFlight();
+                }
+            }
+            else if (msg.equals("ENEMY_SHOT_STOP")) {
+                if (isEnemyFlying) {
+                    isEnemyFlying = false;
+                    if (threadForEnemyArrow != null) {
+                        threadForEnemyArrow.interrupt();
+                        threadForEnemyArrow = null;
+                    }
+                    if (playerId == 1) {
+                        currentPointForEnemyArrow.set(new Point(ARROW2_START_X, ARROW2_START_Y));
+                    } else {
+                        currentPointForEnemyArrow.set(new Point(ARROW1_START_X, ARROW1_START_Y));
+                    }
+                }
+            }
+            else if (msg.equals("PAUSE")) {
+                isPause = true;
+                isTablePaused = true;
+                synchronized (lockObject) {
+                    lockObject.notifyAll();
+                }
+            }
+            else if (msg.equals("RESUME")) {
+                isPause = false;
+                isTablePaused = false;
+                synchronized (lockObject) {
+                    lockObject.notifyAll();
+                }
             }
         });
     }
@@ -440,7 +519,7 @@ public class LabController {
 
         isEnemyFlying = true;
         threadForEnemyArrow = new Thread(() -> {
-            while (isEnemyFlying && gameActive) {
+            while (isEnemyFlying && gameActive && !isPause) {
                 nextEnemyFlyStep();
                 try {
                     Thread.sleep(50);
@@ -492,7 +571,9 @@ public class LabController {
             isRun = true;
             isPause = false;
             while (isRun && gameActive) {
-                next();
+                if (!isPause) {
+                    next();
+                }
                 synchronized (lockObject) {
                     if (isPause) {
                         try {
@@ -516,6 +597,7 @@ public class LabController {
         isRun = false;
         isFly = false;
         isEnemyFlying = false;
+        isTablePaused = false;
 
         if (threadForCircle != null) {
             threadForCircle.interrupt();
@@ -559,6 +641,7 @@ public class LabController {
                     && ty >= circleBig.getLayoutY() - circleBig.getRadius() && ty <= circleBig.getLayoutY() + circleBig.getRadius()) {
                 myScore++;
                 if (out != null) out.println("SHOT:1");
+                out.println("ENEMY_SHOT_STOP");
                 Platform.runLater(() -> {
                     if (playerId == 1) {
                         count1.setText(String.valueOf(myScore));
@@ -573,6 +656,7 @@ public class LabController {
                     && ty >= circleSmall.getLayoutY() - circleSmall.getRadius() && ty <= circleSmall.getLayoutY() + circleSmall.getRadius()) {
                 myScore += 2;
                 if (out != null) out.println("SHOT:2");
+                out.println("ENEMY_SHOT_STOP");
                 Platform.runLater(() -> {
                     if (playerId == 1) {
                         count1.setText(String.valueOf(myScore));
@@ -605,7 +689,7 @@ public class LabController {
 
         isFly = true;
         threadForArrow = new Thread(() -> {
-            while (isFly && gameActive) {
+            while (isFly && gameActive && !isPause) {
                 nextFlyStep();
                 synchronized (lockObject) {
                     if (isPause) {
@@ -666,14 +750,38 @@ public class LabController {
         onArcherClicked();
     }
 
+    @FXML
+    void onShowTable() {
+        if (!gameActive) return;
+
+        if (ScoreboardWindow.isOpen()) {
+            return;
+        }
+
+        // Отправляем сигнал о паузе на сервер
+        if (out != null) {
+            out.println("PAUSE_GAME");
+        }
+
+        // Показываем таблицу
+        ScoreboardWindow.showAndWait(() -> {
+            // Этот код выполнится после закрытия окна таблицы
+            if (out != null) {
+                out.println("RESUME_GAME");
+            }
+        });
+    }
+
     public void shutdown() {
         isRun = false;
         isFly = false;
+        DatabaseService.shutdown();
         if (threadForCircle != null) threadForCircle.interrupt();
         if (threadForArrow != null) threadForArrow.interrupt();
         if (socket != null) {
             try { socket.close(); } catch (IOException e) {}
         }
         closeStatusWindow();
+        ScoreboardWindow.close();
     }
 }

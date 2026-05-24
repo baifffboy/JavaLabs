@@ -19,6 +19,7 @@
             <Button fx:id="ready" layoutX="7.0" layoutY="6.0" mnemonicParsing="false" onAction="#onReady" prefHeight="79.0" prefWidth="67.0" text="Готов" />
             <Button fx:id="stop" layoutX="81.0" layoutY="6.0" mnemonicParsing="false" onAction="#onStop" prefHeight="79.0" prefWidth="117.0" text="Остановить игру" />
             <Button fx:id="shot" layoutX="206.0" layoutY="6.0" mnemonicParsing="false" onAction="#onShot" prefHeight="79.0" prefWidth="73.0" text="Выстрел" />
+            <Button fx:id="table_of_result" layoutX="287.0" layoutY="6.0" mnemonicParsing="false" onAction="#onShowTable" prefHeight="79.0" prefWidth="132.0" text="Таблица результатов" />
          </children>
       </Pane>
       <Pane layoutX="3.0" layoutY="2.0" prefHeight="303.0" prefWidth="48.0" style="-fx-border-width: 2px; -fx-border-color: black;">
