@@ -494,8 +494,15 @@ public class LabController {
                 isTablePaused = true;
                 isArrowPaused = true;
 
-                // Останавливаем поток стрелы при паузе
+                // Останавливаем поток своей стрелы при паузе
                 if (threadForArrow != null && isFly) {
+                    synchronized (arrowLock) {
+                        arrowLock.notifyAll();
+                    }
+                }
+
+                // Останавливаем поток стрелы противника при паузе
+                if (threadForEnemyArrow != null && isEnemyFlying) {
                     synchronized (arrowLock) {
                         arrowLock.notifyAll();
                     }
@@ -510,9 +517,14 @@ public class LabController {
                 isTablePaused = false;
                 isArrowPaused = false;
 
-                // Возобновляем движение стрелы, если она была в полёте
+                // Возобновляем движение своей стрелы, если она была в полёте
                 if (isFly && gameActive && threadForArrow == null) {
                     resumeArrowFlight();
+                }
+
+                // Возобновляем движение стрелы противника, если она была в полёте
+                if (isEnemyFlying && gameActive && threadForEnemyArrow == null) {
+                    resumeEnemyArrowFlight();
                 }
 
                 synchronized (lockObject) {
@@ -555,7 +567,10 @@ public class LabController {
     }
 
     void startEnemyArrowFlight() {
-        if (!gameActive || isEnemyFlying || isTablePaused) return;
+        if (!gameActive || isEnemyFlying) return;
+
+        // Если игра на паузе, не запускаем стрелу
+        if (isTablePaused) return;
 
         if (threadForEnemyArrow != null) {
             threadForEnemyArrow.interrupt();
@@ -578,6 +593,16 @@ public class LabController {
         threadForEnemyArrow = new Thread(() -> {
             while (isEnemyFlying && gameActive && !isTablePaused) {
                 nextEnemyFlyStep();
+                // Проверяем паузу внутри цикла
+                if (isTablePaused) {
+                    synchronized (arrowLock) {
+                        try {
+                            arrowLock.wait();
+                        } catch (InterruptedException e) {
+                            return;
+                        }
+                    }
+                }
                 try {
                     Thread.sleep(50);
                 } catch (InterruptedException e) {
@@ -655,6 +680,7 @@ public class LabController {
         isFly = false;
         isEnemyFlying = false;
         isTablePaused = false;
+        isArrowPaused = false;  // Добавьте эту строку
 
         if (threadForCircle != null) {
             threadForCircle.interrupt();
@@ -673,6 +699,13 @@ public class LabController {
             currentPointForMyArrow.set(new Point(ARROW1_START_X, ARROW1_START_Y));
         } else {
             currentPointForMyArrow.set(new Point(ARROW2_START_X, ARROW2_START_Y));
+        }
+
+        // Сброс позиции стрелы противника
+        if (playerId == 1) {
+            currentPointForEnemyArrow.set(new Point(ARROW2_START_X, ARROW2_START_Y));
+        } else {
+            currentPointForEnemyArrow.set(new Point(ARROW1_START_X, ARROW1_START_Y));
         }
 
         if (currentPointForCircleBig != null && currentPointForCircleSmall != null) {
@@ -768,6 +801,39 @@ public class LabController {
         threadForArrow.start();
     }
 
+    private void resumeEnemyArrowFlight() {
+        if (!gameActive || !isEnemyFlying || isTablePaused) return;
+
+        if (threadForEnemyArrow != null) {
+            threadForEnemyArrow.interrupt();
+            threadForEnemyArrow = null;
+        }
+
+        isEnemyFlying = true;
+        threadForEnemyArrow = new Thread(() -> {
+            while (isEnemyFlying && gameActive && !isTablePaused) {
+                nextEnemyFlyStep();
+                // Проверяем паузу внутри цикла
+                if (isTablePaused) {
+                    synchronized (arrowLock) {
+                        try {
+                            arrowLock.wait();
+                        } catch (InterruptedException e) {
+                            return;
+                        }
+                    }
+                }
+                try {
+                    Thread.sleep(50);
+                } catch (InterruptedException e) {
+                    return;
+                }
+            }
+            threadForEnemyArrow = null;
+        });
+        threadForEnemyArrow.start();
+    }
+
     @FXML
     void onArcherClicked() {
         if (!gameActive || isFly) return;
@@ -811,12 +877,9 @@ public class LabController {
     void onShowTable() {
         if (!gameActive) return;
 
-        if (ScoreboardWindow.isOpen()) {
-            return;
-        }
-
         // Сохраняем состояние полёта стрелы перед паузой
         boolean wasArrowFlying = isFly;
+        boolean wasEnemyFlying = isEnemyFlying;
 
         // Отправляем сигнал о паузе на сервер
         if (out != null) {
@@ -829,7 +892,7 @@ public class LabController {
             if (out != null) {
                 out.println("RESUME_GAME");
             }
-            // Стрела продолжит движение автоматически через обработку RESUME
+            // Стрелы продолжат движение автоматически через обработку RESUME
         });
     }
 
