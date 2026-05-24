@@ -10,7 +10,7 @@ public class HelloApplication extends Application {
     public void start(Stage stage) throws Exception {
         FXMLLoader fxmlLoader = new FXMLLoader(getClass().getResource("Lab.fxml"));
         Scene scene = new Scene(fxmlLoader.load(), 600, 400);
-        stage.setTitle("Lab2");
+        stage.setTitle("Lab3");
         stage.setScene(scene);
         stage.setOnCloseRequest(e -> {
             LabController controller = fxmlLoader.getController();

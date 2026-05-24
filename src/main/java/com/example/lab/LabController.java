@@ -89,6 +89,9 @@ public class LabController {
     private AtomicReference<Point> currentPointForCircleBig;
     private AtomicReference<Point> currentPointForCircleSmall;
     private AtomicReference<Point> currentPointForMyArrow;
+    private volatile boolean isEnemyFlying = false;
+    private Thread threadForEnemyArrow;
+    private AtomicReference<Point> currentPointForEnemyArrow;
 
     @FXML
     public void initialize() {
@@ -116,6 +119,16 @@ public class LabController {
                     } else {
                         arrow1.setLayoutX(pArrow.x);
                         arrow1.setLayoutY(pArrow.y);
+                    }
+                }
+                if (currentPointForEnemyArrow != null) {
+                    Point pEnemy = currentPointForEnemyArrow.get();
+                    if (playerId == 1) {
+                        arrow1.setLayoutX(pEnemy.x);
+                        arrow1.setLayoutY(pEnemy.y);
+                    } else {
+                        arrow.setLayoutX(pEnemy.x);
+                        arrow.setLayoutY(pEnemy.y);
                     }
                 }
             }
@@ -182,7 +195,6 @@ public class LabController {
     }
 
     private void showConnectionDialog() {
-        // Диалог для выбора номера комнаты
         TextInputDialog roomDialog = new TextInputDialog("1");
         roomDialog.setTitle("Выбор комнаты");
         roomDialog.setHeaderText("Введите номер комнаты - у игроков одной игры номер должен совпадать");
@@ -200,7 +212,6 @@ public class LabController {
             roomNumber = 1;
         }
 
-        // Диалог для выбора ID игрока (1 или 2 в комнате)
         TextInputDialog idDialog = new TextInputDialog("1");
         idDialog.setTitle("Выбор игрока");
         idDialog.setHeaderText("Выберите номер игрока в комнате (1 или 2)");
@@ -249,12 +260,14 @@ public class LabController {
 
                     if (playerId == 1) {
                         currentPointForMyArrow = new AtomicReference<>(new Point(ARROW1_START_X, ARROW1_START_Y));
+                        currentPointForEnemyArrow = new AtomicReference<>(new Point(ARROW2_START_X, ARROW2_START_Y));
                         Platform.runLater(() -> {
                             nameOfGamer1.setText(playerName);
                             nameOfGamer2.setText("Ожидание...");
                         });
                     } else {
                         currentPointForMyArrow = new AtomicReference<>(new Point(ARROW2_START_X, ARROW2_START_Y));
+                        currentPointForEnemyArrow = new AtomicReference<>(new Point(ARROW1_START_X, ARROW1_START_Y));
                         Platform.runLater(() -> {
                             nameOfGamer2.setText(playerName);
                             nameOfGamer1.setText("Ожидание...");
@@ -397,10 +410,66 @@ public class LabController {
                 showErrorWindow(msg.substring(5));
                 ready.setDisable(false);
             }
+            else if (msg.startsWith("ENEMY_SHOT:")) {
+                String[] parts = msg.split(":");
+                int enemyId = Integer.parseInt(parts[1]);
+                startEnemyArrowFlight();
+            }
         });
     }
 
-    // Остальные методы (next, onStart, resetGame, nextFlyStep, arrowFlight, onArcherClicked, onReady, onStop, onShot, shutdown) остаются без изменений
+    void startEnemyArrowFlight() {
+        if (!gameActive || isEnemyFlying) return;
+
+        if (threadForEnemyArrow != null) {
+            threadForEnemyArrow.interrupt();
+            threadForEnemyArrow = null;
+        }
+
+        if (currentPointForEnemyArrow == null) {
+            currentPointForEnemyArrow = new AtomicReference<>(new Point(
+                    (playerId == 1) ? ARROW2_START_X : ARROW1_START_X,
+                    (playerId == 1) ? ARROW2_START_Y : ARROW1_START_Y
+            ));
+        } else {
+            currentPointForEnemyArrow.set(new Point(
+                    (playerId == 1) ? ARROW2_START_X : ARROW1_START_X,
+                    (playerId == 1) ? ARROW2_START_Y : ARROW1_START_Y
+            ));
+        }
+
+        isEnemyFlying = true;
+        threadForEnemyArrow = new Thread(() -> {
+            while (isEnemyFlying && gameActive) {
+                nextEnemyFlyStep();
+                try {
+                    Thread.sleep(50);
+                } catch (InterruptedException e) {
+                    return;
+                }
+            }
+            threadForEnemyArrow = null;
+        });
+        threadForEnemyArrow.start();
+    }
+
+    void nextEnemyFlyStep() {
+        currentPointForEnemyArrow.getAndUpdate(point -> {
+            double tx = point.x + ((playerId == 1) ? arrow.getEndX() : arrow1.getEndX());
+            double ty = point.y;
+
+            double startX = (playerId == 1) ? ARROW2_START_X : ARROW1_START_X;
+            double startY = (playerId == 1) ? ARROW2_START_Y : ARROW1_START_Y;
+
+            if (tx >= counter.getLayoutX() - LENGTH_OF_ARROW / 2) {
+                isEnemyFlying = false;
+                return new Point(startX, startY);
+            }
+            tx += STEP_BY_ARROW;
+            return new Point(tx - ((playerId == 1) ? arrow.getEndX() : arrow1.getEndX()), point.y);
+        });
+    }
+
     void next() {
         currentPointForCircleBig.getAndUpdate(point -> {
             double ty = point.y;
@@ -446,6 +515,7 @@ public class LabController {
     void resetGame() {
         isRun = false;
         isFly = false;
+        isEnemyFlying = false;
 
         if (threadForCircle != null) {
             threadForCircle.interrupt();
@@ -454,6 +524,10 @@ public class LabController {
         if (threadForArrow != null) {
             threadForArrow.interrupt();
             threadForArrow = null;
+        }
+        if (threadForEnemyArrow != null) {
+            threadForEnemyArrow.interrupt();
+            threadForEnemyArrow = null;
         }
 
         if (playerId == 1) {
@@ -557,7 +631,10 @@ public class LabController {
     void onArcherClicked() {
         if (!gameActive || isFly) return;
         myShots++;
-        if (out != null) out.println("SHOT_COUNT:" + myShots);
+        if (out != null) {
+            out.println("SHOT_COUNT:" + myShots);
+            out.println("PLAYER_SHOT");
+        }
         if (playerId == 1) {
             counterOfShot1.setText(String.valueOf(myShots));
         } else {
