@@ -70,6 +70,8 @@ public class LabController {
     volatile boolean isPause;
     volatile boolean isFly;
     private final Object lockObject = new Object();
+    volatile boolean isArrowPaused = false;
+    private final Object arrowLock = new Object();
 
     private static final int STEP_BY_BIGCIRCLE = 5;
     private static final int STEP_BY_SMALLCIRCLE = STEP_BY_BIGCIRCLE * 2;
@@ -329,6 +331,7 @@ public class LabController {
                 gameActive = true;
                 isPause = false;
                 isTablePaused = false;
+                isArrowPaused = false;
                 myScore = 0;
                 myShots = 0;
                 otherPlayerScore = 0;
@@ -356,11 +359,9 @@ public class LabController {
                 System.out.println("Имя противника: " + opponentName);
                 if (playerId == 1) {
                     nameOfGamer2.setText(opponentName);
-                    // Обновляем имена в таблице результатов
                     ScoreboardWindow.updateCurrentPlayerNames(playerName, opponentName);
                 } else {
                     nameOfGamer1.setText(opponentName);
-                    // Обновляем имена в таблице результатов
                     ScoreboardWindow.updateCurrentPlayerNames(opponentName, playerName);
                 }
             }
@@ -403,11 +404,9 @@ public class LabController {
                     otherPlayerName = name;
                     if (playerId == 1) {
                         nameOfGamer2.setText(name);
-                        // Обновляем имена в таблице результатов
                         ScoreboardWindow.updateCurrentPlayerNames(playerName, name);
                     } else {
                         nameOfGamer1.setText(name);
-                        // Обновляем имена в таблице результатов
                         ScoreboardWindow.updateCurrentPlayerNames(name, playerName);
                     }
                 }
@@ -418,11 +417,11 @@ public class LabController {
                 isRun = false;
                 isFly = false;
                 isEnemyFlying = false;
+                isArrowPaused = false;
 
                 String winnerName = (winnerId == playerId) ? playerName :
                         (playerId == 1 ? nameOfGamer2.getText() : nameOfGamer1.getText());
 
-                // Сохраняем победу в БД синхронно (но в отдельном потоке с ожиданием)
                 final String finalWinnerName = winnerName;
                 Thread saveThread = new Thread(() -> {
                     try {
@@ -435,7 +434,6 @@ public class LabController {
                 });
                 saveThread.start();
 
-                // Ждем сохранения не более 2 секунд
                 try {
                     saveThread.join(2000);
                 } catch (InterruptedException e) {
@@ -446,11 +444,9 @@ public class LabController {
                     showErrorWindow("Победитель: " + winnerName + "!");
                 });
 
-                // Сброс игры
                 resetGame();
                 ready.setDisable(false);
 
-                // Останавливаем все потоки
                 if (threadForCircle != null) {
                     threadForCircle.interrupt();
                     threadForCircle = null;
@@ -469,12 +465,13 @@ public class LabController {
                 isRun = false;
                 isFly = false;
                 isEnemyFlying = false;
+                isArrowPaused = false;
                 resetGame();
                 showErrorWindow(msg.substring(5));
                 ready.setDisable(false);
             }
             else if (msg.startsWith("ENEMY_SHOT:")) {
-                if (gameActive && !isPause) {
+                if (gameActive && !isPause && !isTablePaused) {
                     startEnemyArrowFlight();
                 }
             }
@@ -495,6 +492,15 @@ public class LabController {
             else if (msg.equals("PAUSE")) {
                 isPause = true;
                 isTablePaused = true;
+                isArrowPaused = true;
+
+                // Останавливаем поток стрелы при паузе
+                if (threadForArrow != null && isFly) {
+                    synchronized (arrowLock) {
+                        arrowLock.notifyAll();
+                    }
+                }
+
                 synchronized (lockObject) {
                     lockObject.notifyAll();
                 }
@@ -502,6 +508,13 @@ public class LabController {
             else if (msg.equals("RESUME")) {
                 isPause = false;
                 isTablePaused = false;
+                isArrowPaused = false;
+
+                // Возобновляем движение стрелы, если она была в полёте
+                if (isFly && gameActive && threadForArrow == null) {
+                    resumeArrowFlight();
+                }
+
                 synchronized (lockObject) {
                     lockObject.notifyAll();
                 }
@@ -509,8 +522,40 @@ public class LabController {
         });
     }
 
+    private void resumeArrowFlight() {
+        if (!gameActive || !isFly || isTablePaused) return;
+
+        if (threadForArrow != null) {
+            threadForArrow.interrupt();
+            threadForArrow = null;
+        }
+
+        isFly = true;
+        threadForArrow = new Thread(() -> {
+            while (isFly && gameActive && !isTablePaused) {
+                nextFlyStep();
+                synchronized (arrowLock) {
+                    if (isTablePaused) {
+                        try {
+                            arrowLock.wait();
+                        } catch (InterruptedException e) {
+                            return;
+                        }
+                    }
+                }
+                try {
+                    Thread.sleep(50);
+                } catch (InterruptedException e) {
+                    return;
+                }
+            }
+            threadForArrow = null;
+        });
+        threadForArrow.start();
+    }
+
     void startEnemyArrowFlight() {
-        if (!gameActive || isEnemyFlying) return;
+        if (!gameActive || isEnemyFlying || isTablePaused) return;
 
         if (threadForEnemyArrow != null) {
             threadForEnemyArrow.interrupt();
@@ -531,7 +576,7 @@ public class LabController {
 
         isEnemyFlying = true;
         threadForEnemyArrow = new Thread(() -> {
-            while (isEnemyFlying && gameActive && !isPause) {
+            while (isEnemyFlying && gameActive && !isTablePaused) {
                 nextEnemyFlyStep();
                 try {
                     Thread.sleep(50);
@@ -638,7 +683,7 @@ public class LabController {
 
     void nextFlyStep() {
         currentPointForMyArrow.getAndUpdate(point -> {
-            double tx = point.x + arrow.getEndX();
+            double tx = point.x + ((playerId == 1) ? arrow.getEndX() : arrow1.getEndX());
             double ty = point.y;
 
             double startX = (playerId == 1) ? ARROW1_START_X : ARROW2_START_X;
@@ -680,7 +725,7 @@ public class LabController {
                 return new Point(startX, startY);
             } else {
                 tx += STEP_BY_ARROW;
-                return new Point(tx - arrow.getEndX(), point.y);
+                return new Point(tx - ((playerId == 1) ? arrow.getEndX() : arrow1.getEndX()), point.y);
             }
         });
     }
@@ -701,12 +746,12 @@ public class LabController {
 
         isFly = true;
         threadForArrow = new Thread(() -> {
-            while (isFly && gameActive && !isPause) {
+            while (isFly && gameActive && !isTablePaused) {
                 nextFlyStep();
-                synchronized (lockObject) {
-                    if (isPause) {
+                synchronized (arrowLock) {
+                    if (isTablePaused) {
                         try {
-                            lockObject.wait();
+                            arrowLock.wait();
                         } catch (InterruptedException e) {
                             return;
                         }
@@ -770,6 +815,9 @@ public class LabController {
             return;
         }
 
+        // Сохраняем состояние полёта стрелы перед паузой
+        boolean wasArrowFlying = isFly;
+
         // Отправляем сигнал о паузе на сервер
         if (out != null) {
             out.println("PAUSE_GAME");
@@ -781,6 +829,7 @@ public class LabController {
             if (out != null) {
                 out.println("RESUME_GAME");
             }
+            // Стрела продолжит движение автоматически через обработку RESUME
         });
     }
 
