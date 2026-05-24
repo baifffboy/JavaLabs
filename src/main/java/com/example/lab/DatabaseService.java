@@ -1,6 +1,7 @@
 package com.example.lab;
 
 import jakarta.persistence.*;
+
 import java.util.List;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -12,7 +13,6 @@ public class DatabaseService {
         if (emf == null || !emf.isOpen()) {
             try {
                 emf = Persistence.createEntityManagerFactory("gamePU");
-                System.out.println("EntityManagerFactory успешно создан");
             } catch (Exception e) {
                 System.err.println("Ошибка создания EntityManagerFactory: " + e.getMessage());
                 e.printStackTrace();
@@ -51,7 +51,6 @@ public class DatabaseService {
                     em.merge(player);
                 }
                 em.getTransaction().commit();
-                System.out.println("Победа сохранена для " + playerName);
             } catch (Exception e) {
                 if (em.getTransaction().isActive()) {
                     em.getTransaction().rollback();
@@ -79,7 +78,6 @@ public class DatabaseService {
             try {
                 List<Player> players = em.createQuery("SELECT p FROM Player p ORDER BY p.wins DESC", Player.class)
                         .getResultList();
-                System.out.println("Загружено игроков: " + players.size());
                 return players;
             } catch (Exception e) {
                 System.err.println("Ошибка при получении игроков: " + e.getMessage());
@@ -91,8 +89,6 @@ public class DatabaseService {
             lock.unlock();
         }
     }
-
-    // Добавьте этот метод в класс DatabaseService
 
     public static void resetAllPlayers() {
         lock.lock();
@@ -106,13 +102,8 @@ public class DatabaseService {
             EntityManager em = factory.createEntityManager();
             try {
                 em.getTransaction().begin();
-
-                // Удаляем всех игроков
                 Query deleteQuery = em.createQuery("DELETE FROM Player");
-                int deletedCount = deleteQuery.executeUpdate();
-
                 em.getTransaction().commit();
-                System.out.println("Удалено игроков: " + deletedCount);
             } catch (Exception e) {
                 if (em.getTransaction().isActive()) {
                     em.getTransaction().rollback();
@@ -127,8 +118,6 @@ public class DatabaseService {
             lock.unlock();
         }
     }
-
-    // Добавьте этот метод в класс DatabaseService
 
     public static void addOrUpdatePlayer(String playerName, int wins) {
         if (playerName == null || playerName.trim().isEmpty()) return;
@@ -153,12 +142,10 @@ public class DatabaseService {
                 if (results.isEmpty()) {
                     Player player = new Player(playerName, wins);
                     em.persist(player);
-                    System.out.println("Добавлен новый игрок: " + playerName + " с победами: " + wins);
                 } else {
                     Player player = results.get(0);
                     player.setWins(wins);
                     em.merge(player);
-                    System.out.println("Обновлён игрок: " + playerName + " теперь побед: " + wins);
                 }
                 em.getTransaction().commit();
             } catch (Exception e) {
@@ -181,7 +168,6 @@ public class DatabaseService {
             if (emf != null && emf.isOpen()) {
                 emf.close();
                 emf = null;
-                System.out.println("EntityManagerFactory закрыт");
             }
         } finally {
             lock.unlock();

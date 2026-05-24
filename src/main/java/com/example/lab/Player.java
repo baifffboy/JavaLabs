@@ -16,17 +16,35 @@ public class Player {
     @Column(nullable = false)
     private int wins;
 
-    public Player() {}
+    public Player() {
+    }
 
     public Player(String playerName, int wins) {
         this.playerName = playerName;
         this.wins = wins;
     }
 
-    public Long getId() { return id; }
-    public void setId(Long id) { this.id = id; }
-    public String getPlayerName() { return playerName; }
-    public void setPlayerName(String playerName) { this.playerName = playerName; }
-    public int getWins() { return wins; }
-    public void setWins(int wins) { this.wins = wins; }
+    public Long getId() {
+        return id;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
+    }
+
+    public String getPlayerName() {
+        return playerName;
+    }
+
+    public void setPlayerName(String playerName) {
+        this.playerName = playerName;
+    }
+
+    public int getWins() {
+        return wins;
+    }
+
+    public void setWins(int wins) {
+        this.wins = wins;
+    }
 }

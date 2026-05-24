@@ -23,7 +23,6 @@ public class ScoreboardWindow {
     private static String currentPlayer1Name = "Игрок 1";
     private static String currentPlayer2Name = "Игрок 2";
 
-    // Метод для обновления текущих имён игроков
     public static void updateCurrentPlayerNames(String player1Name, String player2Name) {
         if (player1Name != null && !player1Name.trim().isEmpty()) {
             currentPlayer1Name = player1Name;
@@ -31,7 +30,6 @@ public class ScoreboardWindow {
         if (player2Name != null && !player2Name.trim().isEmpty()) {
             currentPlayer2Name = player2Name;
         }
-        System.out.println("Обновлены имена игроков: " + currentPlayer1Name + ", " + currentPlayer2Name);
     }
 
     public static void showAndWait(Runnable onClose) {
@@ -156,15 +154,12 @@ public class ScoreboardWindow {
     private static void resetAllData(TableView<Player> tableView) {
         new Thread(() -> {
             try {
-                // Сначала очищаем всю таблицу
                 DatabaseService.resetAllPlayers();
 
-                // Затем добавляем текущих игроков с нулевыми победами
                 DatabaseService.addOrUpdatePlayer(currentPlayer1Name, 0);
                 DatabaseService.addOrUpdatePlayer(currentPlayer2Name, 0);
 
                 Platform.runLater(() -> {
-                    // Загружаем обновлённые данные
                     loadTableDataAsync(tableView);
                     showInfoDialog("Сброс выполнен",
                             "Таблица результатов очищена и добавлены текущие игроки:\n" +

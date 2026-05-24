@@ -25,7 +25,6 @@ public class Server {
     public void start() {
         try {
             serverSocket = new ServerSocket(PORT);
-            System.out.println("Сервер запущен на порту " + PORT);
 
             while (true) {
                 Socket socket = serverSocket.accept();
@@ -128,8 +127,6 @@ public class Server {
 
             player1.send("START");
             player2.send("START");
-
-            System.out.println("Игра началась в комнате " + roomId);
         }
     }
 
@@ -142,7 +139,6 @@ public class Server {
         if (shooter.score >= 6) {
             roomGameActive.put(roomId, false);
             broadcastToRoom(roomId, "WINNER:" + shooter.id);
-            System.out.println("Победитель в комнате " + roomId + ": " + shooter.name);
 
             List<ClientHandler> room = gameRooms.get(roomId);
             if (room != null) {
@@ -237,7 +233,6 @@ public class Server {
                 server.roomGameActive.putIfAbsent(roomId, false);
 
                 out.println("OK:" + id + ":" + roomId);
-                System.out.println("Игрок " + name + " (id=" + id + ") подключился к комнате " + roomId);
 
                 List<ClientHandler> currentRoom = server.gameRooms.get(roomId);
                 for (ClientHandler c : currentRoom) {
@@ -258,7 +253,6 @@ public class Server {
                 while ((msg = in.readLine()) != null) {
                     if (msg.equals("READY")) {
                         ready = true;
-                        System.out.println("Игрок " + name + " готов");
                         server.checkAndStartGame(roomId);
                     } else if (msg.startsWith("SHOT:")) {
                         int points = Integer.parseInt(msg.split(":")[1]);
@@ -269,10 +263,8 @@ public class Server {
                     } else if (msg.equals("STOP")) {
                         server.handleStop(roomId, name);
                     } else if (msg.equals("PAUSE_GAME")) {
-                        System.out.println("Пауза в комнате " + roomId);
                         server.broadcastToRoom(roomId, "PAUSE");
                     } else if (msg.equals("RESUME_GAME")) {
-                        System.out.println("Возобновление в комнате " + roomId);
                         server.broadcastToRoom(roomId, "RESUME");
                     } else if (msg.equals("ENEMY_SHOT_STOP")) {
                         server.broadcastToRoom(roomId, "ENEMY_SHOT_STOP", this);

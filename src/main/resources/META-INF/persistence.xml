@@ -7,7 +7,6 @@
         <class>com.example.lab.Player</class>
         <properties>
             <property name="jakarta.persistence.jdbc.driver" value="org.h2.Driver"/>
-            <!-- Используем режим сервера для предотвращения блокировки -->
             <property name="jakarta.persistence.jdbc.url" value="jdbc:h2:./gameDB;DB_CLOSE_DELAY=-1;AUTO_RECONNECT=TRUE;DB_CLOSE_ON_EXIT=FALSE"/>
             <property name="jakarta.persistence.jdbc.user" value="sa"/>
             <property name="jakarta.persistence.jdbc.password" value=""/>
