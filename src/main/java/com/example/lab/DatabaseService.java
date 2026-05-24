@@ -92,6 +92,89 @@ public class DatabaseService {
         }
     }
 
+    // Добавьте этот метод в класс DatabaseService
+
+    public static void resetAllPlayers() {
+        lock.lock();
+        try {
+            EntityManagerFactory factory = getEntityManagerFactory();
+            if (factory == null) {
+                System.err.println("Не удалось получить EntityManagerFactory");
+                return;
+            }
+
+            EntityManager em = factory.createEntityManager();
+            try {
+                em.getTransaction().begin();
+
+                // Удаляем всех игроков
+                Query deleteQuery = em.createQuery("DELETE FROM Player");
+                int deletedCount = deleteQuery.executeUpdate();
+
+                em.getTransaction().commit();
+                System.out.println("Удалено игроков: " + deletedCount);
+            } catch (Exception e) {
+                if (em.getTransaction().isActive()) {
+                    em.getTransaction().rollback();
+                }
+                System.err.println("Ошибка при сбросе таблицы: " + e.getMessage());
+                e.printStackTrace();
+                throw e;
+            } finally {
+                em.close();
+            }
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    // Добавьте этот метод в класс DatabaseService
+
+    public static void addOrUpdatePlayer(String playerName, int wins) {
+        if (playerName == null || playerName.trim().isEmpty()) return;
+
+        lock.lock();
+        try {
+            EntityManagerFactory factory = getEntityManagerFactory();
+            if (factory == null) {
+                System.err.println("Не удалось получить EntityManagerFactory");
+                return;
+            }
+
+            EntityManager em = factory.createEntityManager();
+            try {
+                em.getTransaction().begin();
+
+                TypedQuery<Player> query = em.createQuery(
+                        "SELECT p FROM Player p WHERE p.playerName = :name", Player.class);
+                query.setParameter("name", playerName);
+                List<Player> results = query.getResultList();
+
+                if (results.isEmpty()) {
+                    Player player = new Player(playerName, wins);
+                    em.persist(player);
+                    System.out.println("Добавлен новый игрок: " + playerName + " с победами: " + wins);
+                } else {
+                    Player player = results.get(0);
+                    player.setWins(wins);
+                    em.merge(player);
+                    System.out.println("Обновлён игрок: " + playerName + " теперь побед: " + wins);
+                }
+                em.getTransaction().commit();
+            } catch (Exception e) {
+                if (em.getTransaction().isActive()) {
+                    em.getTransaction().rollback();
+                }
+                System.err.println("Ошибка при добавлении/обновлении игрока: " + e.getMessage());
+                e.printStackTrace();
+            } finally {
+                em.close();
+            }
+        } finally {
+            lock.unlock();
+        }
+    }
+
     public static void shutdown() {
         lock.lock();
         try {

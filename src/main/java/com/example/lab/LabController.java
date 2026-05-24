@@ -270,6 +270,8 @@ public class LabController {
                         Platform.runLater(() -> {
                             nameOfGamer1.setText(playerName);
                             nameOfGamer2.setText("Ожидание...");
+                            // Устанавливаем текущее имя игрока 1
+                            ScoreboardWindow.updateCurrentPlayerNames(playerName, "Ожидание...");
                         });
                     } else {
                         currentPointForMyArrow = new AtomicReference<>(new Point(ARROW2_START_X, ARROW2_START_Y));
@@ -277,6 +279,8 @@ public class LabController {
                         Platform.runLater(() -> {
                             nameOfGamer2.setText(playerName);
                             nameOfGamer1.setText("Ожидание...");
+                            // Устанавливаем текущее имя игрока 2
+                            ScoreboardWindow.updateCurrentPlayerNames("Ожидание...", playerName);
                         });
                     }
 
@@ -352,8 +356,12 @@ public class LabController {
                 System.out.println("Имя противника: " + opponentName);
                 if (playerId == 1) {
                     nameOfGamer2.setText(opponentName);
+                    // Обновляем имена в таблице результатов
+                    ScoreboardWindow.updateCurrentPlayerNames(playerName, opponentName);
                 } else {
                     nameOfGamer1.setText(opponentName);
+                    // Обновляем имена в таблице результатов
+                    ScoreboardWindow.updateCurrentPlayerNames(opponentName, playerName);
                 }
             }
             else if (msg.startsWith("SCORE:")) {
@@ -395,8 +403,12 @@ public class LabController {
                     otherPlayerName = name;
                     if (playerId == 1) {
                         nameOfGamer2.setText(name);
+                        // Обновляем имена в таблице результатов
+                        ScoreboardWindow.updateCurrentPlayerNames(playerName, name);
                     } else {
                         nameOfGamer1.setText(name);
+                        // Обновляем имена в таблице результатов
+                        ScoreboardWindow.updateCurrentPlayerNames(name, playerName);
                     }
                 }
             }

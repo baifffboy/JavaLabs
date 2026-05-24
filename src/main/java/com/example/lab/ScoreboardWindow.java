@@ -20,6 +20,19 @@ public class ScoreboardWindow {
     private static Stage currentStage;
     private static boolean isOpen = false;
     private static Runnable onCloseCallback;
+    private static String currentPlayer1Name = "Игрок 1";
+    private static String currentPlayer2Name = "Игрок 2";
+
+    // Метод для обновления текущих имён игроков
+    public static void updateCurrentPlayerNames(String player1Name, String player2Name) {
+        if (player1Name != null && !player1Name.trim().isEmpty()) {
+            currentPlayer1Name = player1Name;
+        }
+        if (player2Name != null && !player2Name.trim().isEmpty()) {
+            currentPlayer2Name = player2Name;
+        }
+        System.out.println("Обновлены имена игроков: " + currentPlayer1Name + ", " + currentPlayer2Name);
+    }
 
     public static void showAndWait(Runnable onClose) {
         if (isOpen) {
@@ -50,14 +63,12 @@ public class ScoreboardWindow {
             TableColumn<Player, String> nameColumn = new TableColumn<>("Имя игрока");
             nameColumn.setCellValueFactory(cellData ->
                     new javafx.beans.property.SimpleStringProperty(cellData.getValue().getPlayerName()));
-            // Ширина - 50% от общей
             nameColumn.prefWidthProperty().bind(tableView.widthProperty().multiply(0.5));
 
             TableColumn<Player, Integer> winsColumn = new TableColumn<>("Число побед");
             winsColumn.setCellValueFactory(cellData ->
                     new javafx.beans.property.SimpleIntegerProperty(cellData.getValue().getWins()).asObject());
             winsColumn.setStyle("-fx-alignment: CENTER;");
-            // Ширина - 50% от общей
             winsColumn.prefWidthProperty().bind(tableView.widthProperty().multiply(0.5));
 
             tableView.getColumns().addAll(nameColumn, winsColumn);
@@ -82,7 +93,6 @@ public class ScoreboardWindow {
 
             stage.show();
 
-            // Принудительно фокусируем окно
             stage.toFront();
             stage.requestFocus();
 
@@ -103,6 +113,28 @@ public class ScoreboardWindow {
         return refreshButton;
     }
 
+    private static Button createResetButton(TableView<Player> tableView) {
+        Button resetButton = new Button("Сброс");
+        resetButton.setStyle("-fx-font-size: 14px; -fx-padding: 10px; -fx-background-color: #ff4444; -fx-text-fill: white;");
+        resetButton.setOnAction(e -> {
+            Alert confirmDialog = new Alert(Alert.AlertType.CONFIRMATION);
+            confirmDialog.setTitle("Подтверждение сброса");
+            confirmDialog.setHeaderText("Вы уверены?");
+            confirmDialog.setContentText("Это действие удалит всех игроков из таблицы результатов и добавит текущих игроков с нулевыми победами. Отменить будет невозможно.");
+
+            ButtonType yesButton = new ButtonType("Да, сбросить", ButtonBar.ButtonData.YES);
+            ButtonType noButton = new ButtonType("Нет", ButtonBar.ButtonData.NO);
+            confirmDialog.getButtonTypes().setAll(yesButton, noButton);
+
+            confirmDialog.showAndWait().ifPresent(response -> {
+                if (response == yesButton) {
+                    resetAllData(tableView);
+                }
+            });
+        });
+        return resetButton;
+    }
+
     private static Button createCloseButton() {
         Button closeButton = new Button("Закрыть таблицу");
         closeButton.setStyle("-fx-font-size: 14px; -fx-padding: 10px;");
@@ -117,8 +149,34 @@ public class ScoreboardWindow {
     private static HBox createButtons(TableView<Player> tableView) {
         HBox buttonBox = new HBox(10);
         buttonBox.setAlignment(Pos.CENTER);
-        buttonBox.getChildren().addAll(createRefreshButton(tableView), createCloseButton());
+        buttonBox.getChildren().addAll(createRefreshButton(tableView), createResetButton(tableView), createCloseButton());
         return buttonBox;
+    }
+
+    private static void resetAllData(TableView<Player> tableView) {
+        new Thread(() -> {
+            try {
+                // Сначала очищаем всю таблицу
+                DatabaseService.resetAllPlayers();
+
+                // Затем добавляем текущих игроков с нулевыми победами
+                DatabaseService.addOrUpdatePlayer(currentPlayer1Name, 0);
+                DatabaseService.addOrUpdatePlayer(currentPlayer2Name, 0);
+
+                Platform.runLater(() -> {
+                    // Загружаем обновлённые данные
+                    loadTableDataAsync(tableView);
+                    showInfoDialog("Сброс выполнен",
+                            "Таблица результатов очищена и добавлены текущие игроки:\n" +
+                                    currentPlayer1Name + " и " + currentPlayer2Name);
+                });
+            } catch (Exception e) {
+                e.printStackTrace();
+                Platform.runLater(() -> {
+                    showErrorDialog("Ошибка при сбросе: " + e.getMessage());
+                });
+            }
+        }).start();
     }
 
     private static void loadTableDataAsync(TableView<Player> tableView) {
@@ -129,8 +187,9 @@ public class ScoreboardWindow {
 
                 List<Player> displayPlayers;
                 if (allPlayers.isEmpty()) {
-                    // Если данных нет, показываем двух игроков с 0 побед
-                    displayPlayers = getDefaultPlayers();
+                    displayPlayers = new ArrayList<>();
+                    displayPlayers.add(new Player(currentPlayer1Name, 0));
+                    displayPlayers.add(new Player(currentPlayer2Name, 0));
                     Platform.runLater(() -> {
                         tableView.setPlaceholder(new Label(""));
                     });
@@ -146,10 +205,12 @@ public class ScoreboardWindow {
             } catch (Exception e) {
                 e.printStackTrace();
                 Platform.runLater(() -> {
-                    // При ошибке показываем пустых игроков
-                    ObservableList<Player> items = FXCollections.observableArrayList(getDefaultPlayers());
+                    List<Player> defaultPlayers = new ArrayList<>();
+                    defaultPlayers.add(new Player(currentPlayer1Name, 0));
+                    defaultPlayers.add(new Player(currentPlayer2Name, 0));
+                    ObservableList<Player> items = FXCollections.observableArrayList(defaultPlayers);
                     tableView.setItems(items);
-                    tableView.setPlaceholder(new Label("Ошибка подключения к БД, показаны тестовые данные"));
+                    tableView.setPlaceholder(new Label("Ошибка подключения к БД, показаны текущие игроки"));
                 });
             }
         }).start();
@@ -165,11 +226,14 @@ public class ScoreboardWindow {
         });
     }
 
-    private static List<Player> getDefaultPlayers() {
-        List<Player> defaultPlayers = new ArrayList<>();
-        defaultPlayers.add(new Player("Игрок 1", 0));
-        defaultPlayers.add(new Player("Игрок 2", 0));
-        return defaultPlayers;
+    private static void showInfoDialog(String title, String message) {
+        Platform.runLater(() -> {
+            Alert alert = new Alert(Alert.AlertType.INFORMATION);
+            alert.setTitle(title);
+            alert.setHeaderText(null);
+            alert.setContentText(message);
+            alert.showAndWait();
+        });
     }
 
     public static void close() {
