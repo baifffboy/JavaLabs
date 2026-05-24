@@ -14,6 +14,8 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
+import static java.lang.System.out;
+
 public class GameServer {
     private static final int PORT = 12345;
     private static final int MAX_PLAYERS = 4;
@@ -24,6 +26,7 @@ public class GameServer {
     private final Set<String> activeNames = new HashSet<>();
     private static org.h2.tools.Server h2TcpServer;
     private static org.h2.tools.Server h2WebServer;
+    private final List<ClientHandler> observers = new CopyOnWriteArrayList<>();
 
     public void start() {
         startH2Database();
@@ -116,6 +119,10 @@ public class GameServer {
                     roomGameActive.remove(c.roomId);
                 } else {
                     broadcastToRoom(c.roomId, "PLAYER_LEFT:" + c.name);
+
+                    // ✅ ДОБАВИТЬ РАССЫЛКУ НАБЛЮДАТЕЛЯМ
+                    broadcastToObservers("PLAYER_LEFT:" + c.name);
+
                     for (ClientHandler remaining : room) {
                         remaining.ready = false;
                         remaining.gameActive = false;
@@ -163,6 +170,15 @@ public class GameServer {
 
             player1.send("START");
             player2.send("START");
+
+            // ✅ ДОБАВИТЬ РАССЫЛКУ НАБЛЮДАТЕЛЯМ О НАЧАЛЕ ИГРЫ
+            broadcastToObservers("START");
+
+            // ✅ ОТПРАВИТЬ НАБЛЮДАТЕЛЯМ ДАННЫЕ ОБОИХ ИГРОКОВ
+            broadcastToObservers("SCORE:" + player1.id + ":0:0:" + player1.name);
+            broadcastToObservers("SCORE:" + player2.id + ":0:0:" + player2.name);
+            broadcastToObservers("NEW_PLAYER:" + player1.id + ":" + player1.name);
+            broadcastToObservers("NEW_PLAYER:" + player2.id + ":" + player2.name);
         }
     }
 
@@ -172,9 +188,15 @@ public class GameServer {
         shooter.score += points;
         broadcastToRoom(roomId, "SCORE:" + shooter.id + ":" + shooter.score + ":" + shooter.shots + ":" + player);
 
+        // ✅ ДОБАВИТЬ РАССЫЛКУ НАБЛЮДАТЕЛЯМ
+        broadcastToObservers("SCORE:" + shooter.id + ":" + shooter.score + ":" + shooter.shots + ":" + shooter.name);
+
         if (shooter.score >= 6) {
             roomGameActive.put(roomId, false);
             broadcastToRoom(roomId, "WINNER:" + shooter.id);
+
+            // ✅ ДОБАВИТЬ РАССЫЛКУ НАБЛЮДАТЕЛЯМ О ПОБЕДИТЕЛЕ
+            broadcastToObservers("WINNER:" + shooter.id);
 
             try {
                 DatabaseService.incrementWins(shooter.name);
@@ -198,12 +220,18 @@ public class GameServer {
 
         shooter.shots = shots;
         broadcastToRoom(roomId, "SCORE:" + shooter.id + ":" + shooter.score + ":" + shooter.shots + ":" + shooter.name);
+
+        // ✅ ДОБАВИТЬ РАССЫЛКУ НАБЛЮДАТЕЛЯМ
+        broadcastToObservers("SCORE:" + shooter.id + ":" + shooter.score + ":" + shooter.shots + ":" + shooter.name);
     }
 
     public synchronized void handleStop(int roomId, String playerName) {
         if (roomGameActive.getOrDefault(roomId, false)) {
             roomGameActive.put(roomId, false);
             broadcastToRoom(roomId, "STOP:" + playerName + " остановил игру");
+
+            // ✅ ДОБАВИТЬ РАССЫЛКУ НАБЛЮДАТЕЛЯМ
+            broadcastToObservers("STOP:" + playerName + " остановил игру");
 
             List<ClientHandler> room = gameRooms.get(roomId);
             if (room != null) {
@@ -212,6 +240,40 @@ public class GameServer {
                     c.ready = false;
                 }
             }
+        }
+    }
+
+    private void sendCurrentGameState(int roomId) {
+        List<ClientHandler> room = gameRooms.get(roomId);
+        if (room != null) {
+            for (ClientHandler player : room) {
+                out.println("NEW_PLAYER:" + player.id + ":" + player.name);
+                out.println("SCORE:" + player.id + ":" + player.score + ":" + player.shots + ":" + player.name);
+            }
+        }
+        // Отправляем статус игры
+        if (roomGameActive.getOrDefault(roomId, false)) {
+            out.println("START");
+        } else {
+            out.println("STOP:Ожидание игроков");
+        }
+    }
+
+    private void sendLeaderboardToClient(PrintWriter clientOut) {
+        try {
+            List<Player> allPlayers = DatabaseService.getAllPlayers();
+            if (allPlayers.isEmpty()) {
+                clientOut.println("LEADER:Нет данных:0");
+            } else {
+                for (Player p : allPlayers) {
+                    clientOut.println("LEADER:" + p.getPlayerName() + ":" + p.getWins());
+                }
+            }
+            clientOut.println("END_LEADERBOARD");
+        } catch (Exception e) {
+            System.err.println("Ошибка отправки таблицы лидеров: " + e.getMessage());
+            clientOut.println("LEADER:Ошибка:0");
+            clientOut.println("END_LEADERBOARD");
         }
     }
 
@@ -243,20 +305,34 @@ public class GameServer {
                 id = Integer.parseInt(parts[1]);
                 int requestedRoom = Integer.parseInt(parts[2]);
 
+                // ПРОВЕРКА НА НАБЛЮДАТЕЛЯ
                 boolean isObserver = (id == 0);
-                if (isObserver) {
-                    id = 100 + (int)(Math.random() * 900);
-                    out.println("OK:" + id + ":" + requestedRoom);
 
+                if (isObserver) {
+                    // Наблюдатель - НЕ добавляем в игровую комнату
+                    out.println("OK:" + 999 + ":" + requestedRoom);
+                    System.out.println("Наблюдатель " + name + " подключился к комнате " + requestedRoom);
+
+                    // ✅ ДОБАВИТЬ НАБЛЮДАТЕЛЯ В СПИСОК
+                    server.addObserver(this);
+
+                    // Отправляем текущее состояние комнаты
+                    sendCurrentGameState(requestedRoom);
+
+                    // Слушаем команды от наблюдателя
                     String msg;
                     while ((msg = in.readLine()) != null) {
                         if (msg.equals("GET_LEADERBOARD")) {
-                            sendLeaderboard(out);
+                            sendLeaderboardToClient(out);
                         }
                     }
+
+                    // ✅ УДАЛИТЬ НАБЛЮДАТЕЛЯ ПРИ ОТКЛЮЧЕНИИ
+                    server.removeObserver(this);
                     return;
                 }
 
+                // ОСТАЛЬНОЙ КОД ДЛЯ ОБЫЧНЫХ ИГРОКОВ (БЕЗ ИЗМЕНЕНИЙ)
                 List<ClientHandler> room = server.gameRooms.get(requestedRoom);
 
                 if (room != null && room.size() >= 2) {
@@ -327,6 +403,8 @@ public class GameServer {
                         server.broadcastToRoom(roomId, "ENEMY_SHOT_STOP", this);
                     } else if (msg.equals("PLAYER_SHOT")) {
                         server.broadcastToRoom(roomId, "ENEMY_SHOT:" + id, this);
+                    } else if (msg.equals("GET_LEADERBOARD")) {
+                        sendLeaderboardToClient(out);
                     }
                 }
             } catch (IOException e) {
@@ -354,6 +432,20 @@ public class GameServer {
             out.println("END_LEADERBOARD");
         } catch (Exception e) {
             e.printStackTrace();
+        }
+    }
+
+    public void addObserver(ClientHandler observer) {
+        observers.add(observer);
+    }
+
+    public void removeObserver(ClientHandler observer) {
+        observers.remove(observer);
+    }
+
+    public void broadcastToObservers(String msg) {
+        for (ClientHandler observer : observers) {
+            observer.send(msg);
         }
     }
 
