@@ -243,6 +243,20 @@ public class GameServer {
                 id = Integer.parseInt(parts[1]);
                 int requestedRoom = Integer.parseInt(parts[2]);
 
+                boolean isObserver = (id == 0);
+                if (isObserver) {
+                    id = 100 + (int)(Math.random() * 900);
+                    out.println("OK:" + id + ":" + requestedRoom);
+
+                    String msg;
+                    while ((msg = in.readLine()) != null) {
+                        if (msg.equals("GET_LEADERBOARD")) {
+                            sendLeaderboard(out);
+                        }
+                    }
+                    return;
+                }
+
                 List<ClientHandler> room = server.gameRooms.get(requestedRoom);
 
                 if (room != null && room.size() >= 2) {
@@ -328,6 +342,18 @@ public class GameServer {
 
         void send(String msg) {
             out.println(msg);
+        }
+    }
+
+    private void sendLeaderboard(PrintWriter out) {
+        try {
+            List<Player> players = DatabaseService.getAllPlayers();
+            for (Player p : players) {
+                out.println("LEADER:" + p.getPlayerName() + ":" + p.getWins());
+            }
+            out.println("END_LEADERBOARD");
+        } catch (Exception e) {
+            e.printStackTrace();
         }
     }
 
