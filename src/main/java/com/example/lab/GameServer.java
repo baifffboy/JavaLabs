@@ -34,13 +34,11 @@ public class GameServer {
             while (true) {
                 Socket socket = serverSocket.accept();
 
-                // Временно читаем имя и ID, чтобы понять, наблюдатель ли это
                 BufferedReader tempReader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
                 String tempLine = tempReader.readLine();
                 String[] parts = tempLine.split(":");
                 int id = Integer.parseInt(parts[1]);
 
-                // Наблюдатель (id == 0) - не проверяем лимит
                 boolean isObserver = (id == 0);
 
                 if (!isObserver && clients.size() >= MAX_PLAYERS) {
@@ -50,7 +48,7 @@ public class GameServer {
                     continue;
                 }
 
-                ClientHandler handler = new ClientHandler(socket, this, tempLine); // Передаем уже прочитанную строку
+                ClientHandler handler = new ClientHandler(socket, this, tempLine);
                 clients.add(handler);
                 new Thread(handler).start();
             }
@@ -125,8 +123,6 @@ public class GameServer {
                     roomGameActive.remove(c.roomId);
                 } else {
                     broadcastToRoom(c.roomId, "PLAYER_LEFT:" + c.name);
-
-                    // ✅ ДОБАВИТЬ РАССЫЛКУ НАБЛЮДАТЕЛЯМ
                     broadcastToObservers("PLAYER_LEFT:" + c.name);
 
                     for (ClientHandler remaining : room) {
@@ -177,10 +173,8 @@ public class GameServer {
             player1.send("START");
             player2.send("START");
 
-            // ✅ ДОБАВИТЬ РАССЫЛКУ НАБЛЮДАТЕЛЯМ О НАЧАЛЕ ИГРЫ
             broadcastToObservers("START");
 
-            // ✅ ОТПРАВИТЬ НАБЛЮДАТЕЛЯМ ДАННЫЕ ОБОИХ ИГРОКОВ
             broadcastToObservers("SCORE:" + player1.id + ":0:0:" + player1.name + ":" + roomId);
             broadcastToObservers("SCORE:" + player2.id + ":0:0:" + player2.name + ":" + roomId);
             broadcastToObservers("NEW_PLAYER:" + player1.id + ":" + player1.name + ":" + roomId);
@@ -199,12 +193,10 @@ public class GameServer {
             roomGameActive.put(roomId, false);
             broadcastToRoom(roomId, "WINNER:" + shooter.id);
 
-            // ✅ ДОБАВИТЬ РАССЫЛКУ НАБЛЮДАТЕЛЯМ О ПОБЕДИТЕЛЕ
             broadcastToObservers("WINNER:" + shooter.id);
 
             try {
                 DatabaseService.incrementWins(shooter.name);
-                System.out.println("✓ Победа сохранена: " + shooter.name);
             } catch (Exception e) {
                 System.err.println("Ошибка сохранения победы: " + e.getMessage());
             }
@@ -231,8 +223,6 @@ public class GameServer {
         if (roomGameActive.getOrDefault(roomId, false)) {
             roomGameActive.put(roomId, false);
             broadcastToRoom(roomId, "STOP:" + playerName + " остановил игру");
-
-            // ✅ ДОБАВИТЬ РАССЫЛКУ НАБЛЮДАТЕЛЯМ
             broadcastToObservers("STOP:" + playerName + " остановил игру");
 
             List<ClientHandler> room = gameRooms.get(roomId);
@@ -253,7 +243,6 @@ public class GameServer {
                 out.println("SCORE:" + player.id + ":" + player.score + ":" + player.shots + ":" + player.name + ":" + roomId);
             }
         }
-        // Отправляем статус игры
         if (roomGameActive.getOrDefault(roomId, false)) {
             out.println("START");
         } else {
@@ -291,7 +280,7 @@ public class GameServer {
         private boolean gameActive = false;
         private int score = 0;
         private int shots = 0;
-        private String preReadLine;
+        private final String preReadLine;
 
         ClientHandler(Socket s, GameServer server, String alreadyReadLine) throws IOException {
             this.socket = s;
@@ -314,21 +303,14 @@ public class GameServer {
                 id = Integer.parseInt(parts[1]);
                 int requestedRoom = Integer.parseInt(parts[2]);
 
-                // ПРОВЕРКА НА НАБЛЮДАТЕЛЯ
                 boolean isObserver = (id == 0);
 
                 if (isObserver) {
-                    // Наблюдатель - НЕ добавляем в игровую комнату
                     out.println("OK:" + 999 + ":" + requestedRoom);
-                    System.out.println("Наблюдатель " + name + " подключился к комнате " + requestedRoom);
-
-                    // ✅ ДОБАВИТЬ НАБЛЮДАТЕЛЯ В СПИСОК
                     server.addObserver(this);
 
-                    // Отправляем текущее состояние комнаты
                     sendCurrentGameState(requestedRoom);
 
-                    // Слушаем команды от наблюдателя
                     String msg;
                     while ((msg = in.readLine()) != null) {
                         if (msg.equals("GET_LEADERBOARD")) {
@@ -336,12 +318,10 @@ public class GameServer {
                         }
                     }
 
-                    // ✅ УДАЛИТЬ НАБЛЮДАТЕЛЯ ПРИ ОТКЛЮЧЕНИИ
                     server.removeObserver(this);
                     return;
                 }
 
-                // ОСТАЛЬНОЙ КОД ДЛЯ ОБЫЧНЫХ ИГРОКОВ (БЕЗ ИЗМЕНЕНИЙ)
                 List<ClientHandler> room = server.gameRooms.get(requestedRoom);
 
                 if (room != null && room.size() >= 2) {
@@ -434,18 +414,6 @@ public class GameServer {
         }
     }
 
-    private void sendLeaderboard(PrintWriter out) {
-        try {
-            List<Player> players = DatabaseService.getAllPlayers();
-            for (Player p : players) {
-                out.println("LEADER:" + p.getPlayerName() + ":" + p.getWins());
-            }
-            out.println("END_LEADERBOARD");
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
-
     public void addObserver(ClientHandler observer) {
         observers.add(observer);
     }
@@ -478,8 +446,7 @@ public class GameServer {
         for (String name : allPlayers) {
             sb.append(name).append(",");
         }
-        clientOut.println(sb.toString());
-        System.out.println("Отправлен список всех игроков: " + allPlayers.size() + " игроков");
+        clientOut.println(sb);
     }
 
     public static void main(String[] args) {

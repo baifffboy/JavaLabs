@@ -127,7 +127,6 @@ public class ScoreboardWindow {
 
             confirmDialog.showAndWait().ifPresent(response -> {
                 if (response == yesButton) {
-                    // Отправляем запрос на сервер
                     LabController controller = getLabController();
                     if (controller != null) {
                         controller.onResetAllPlayers();
@@ -162,29 +161,6 @@ public class ScoreboardWindow {
         buttonBox.setAlignment(Pos.CENTER);
         buttonBox.getChildren().addAll(createRefreshButton(tableView), createResetButton(tableView), createCloseButton());
         return buttonBox;
-    }
-
-    private static void resetAllData(TableView<Player> tableView) {
-        new Thread(() -> {
-            try {
-                DatabaseService.resetAllPlayers();
-
-                DatabaseService.addOrUpdatePlayer(currentPlayer1Name, 0);
-                DatabaseService.addOrUpdatePlayer(currentPlayer2Name, 0);
-
-                Platform.runLater(() -> {
-                    loadTableDataAsync(tableView);
-                    showInfoDialog("Сброс выполнен",
-                            "Таблица результатов очищена и добавлены текущие игроки:\n" +
-                                    currentPlayer1Name + " и " + currentPlayer2Name);
-                });
-            } catch (Exception e) {
-                e.printStackTrace();
-                Platform.runLater(() -> {
-                    showErrorDialog("Ошибка при сбросе: " + e.getMessage());
-                });
-            }
-        }).start();
     }
 
     private static void loadTableDataAsync(TableView<Player> tableView) {
@@ -234,16 +210,6 @@ public class ScoreboardWindow {
         });
     }
 
-    private static void showInfoDialog(String title, String message) {
-        Platform.runLater(() -> {
-            Alert alert = new Alert(Alert.AlertType.INFORMATION);
-            alert.setTitle(title);
-            alert.setHeaderText(null);
-            alert.setContentText(message);
-            alert.showAndWait();
-        });
-    }
-
     public static void close() {
         if (currentStage != null) {
             Platform.runLater(() -> {
@@ -252,9 +218,5 @@ public class ScoreboardWindow {
                 isOpen = false;
             });
         }
-    }
-
-    public static boolean isOpen() {
-        return isOpen;
     }
 }

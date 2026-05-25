@@ -51,7 +51,6 @@ public class DatabaseService {
                     player.setWins(currentWins + 1);
                 }
                 em.getTransaction().commit();
-
             } catch (Exception e) {
                 if (em.getTransaction().isActive()) {
                     em.getTransaction().rollback();
@@ -74,7 +73,6 @@ public class DatabaseService {
                 System.err.println("EntityManagerFactory не доступен");
                 return List.of();
             }
-
             EntityManager em = factory.createEntityManager();
             try {
                 List<Player> players = em.createQuery("SELECT p FROM Player p ORDER BY p.wins DESC", Player.class)
@@ -104,7 +102,7 @@ public class DatabaseService {
             try {
                 em.getTransaction().begin();
                 Query deleteQuery = em.createQuery("DELETE FROM Player");
-                int deletedCount = deleteQuery.executeUpdate(); // ВАЖНО: вызвать executeUpdate()
+                int deletedCount = deleteQuery.executeUpdate();
                 System.out.println("Удалено игроков: " + deletedCount);
                 em.getTransaction().commit();
             } catch (Exception e) {
@@ -135,7 +133,6 @@ public class DatabaseService {
             EntityManager em = factory.createEntityManager();
             try {
                 em.getTransaction().begin();
-
                 TypedQuery<Player> query = em.createQuery(
                         "SELECT p FROM Player p WHERE p.playerName = :name", Player.class);
                 query.setParameter("name", playerName);
