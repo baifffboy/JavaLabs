@@ -22,6 +22,7 @@ public class ScoreboardWindow {
     private static Runnable onCloseCallback;
     private static String currentPlayer1Name = "Игрок 1";
     private static String currentPlayer2Name = "Игрок 2";
+    private static LabController labController;
 
     public static void updateCurrentPlayerNames(String player1Name, String player2Name) {
         if (player1Name != null && !player1Name.trim().isEmpty()) {
@@ -118,19 +119,31 @@ public class ScoreboardWindow {
             Alert confirmDialog = new Alert(Alert.AlertType.CONFIRMATION);
             confirmDialog.setTitle("Подтверждение сброса");
             confirmDialog.setHeaderText("Вы уверены?");
-            confirmDialog.setContentText("Это действие удалит всех игроков из таблицы результатов и добавит текущих игроков с нулевыми победами. Отменить будет невозможно.");
+            confirmDialog.setContentText("Это действие удалит всех игроков и добавит всех активных игроков из всех комнат с 0 побед.");
 
-            ButtonType yesButton = new ButtonType("Да, сбросить", ButtonBar.ButtonData.YES);
+            ButtonType yesButton = new ButtonType("Да", ButtonBar.ButtonData.YES);
             ButtonType noButton = new ButtonType("Нет", ButtonBar.ButtonData.NO);
             confirmDialog.getButtonTypes().setAll(yesButton, noButton);
 
             confirmDialog.showAndWait().ifPresent(response -> {
                 if (response == yesButton) {
-                    resetAllData(tableView);
+                    // Отправляем запрос на сервер
+                    LabController controller = getLabController();
+                    if (controller != null) {
+                        controller.onResetAllPlayers();
+                    }
                 }
             });
         });
         return resetButton;
+    }
+
+    private static LabController getLabController() {
+        return labController;
+    }
+
+    public static void setLabController(LabController controller) {
+        labController = controller;
     }
 
     private static Button createCloseButton() {

@@ -129,6 +129,8 @@ public class LabController {
 
         LENGTH_OF_ARROW = arrow.getEndX() - arrow.getStartX();
 
+        ScoreboardWindow.setLabController(this);
+
         AnimationTimer renderer = new AnimationTimer() {
             @Override
             public void handle(long l) {
@@ -514,6 +516,23 @@ public class LabController {
                 synchronized (lockObject) {
                     lockObject.notifyAll();
                 }
+            } else if (msg.startsWith("ALL_PLAYERS:")) {
+                String playersData = msg.substring(12);
+                String[] playerNames = playersData.split(",");
+
+                // Сбрасываем всех игроков
+                DatabaseService.resetAllPlayers();
+
+                // Добавляем каждого игрока с 0 побед
+                for (String name : playerNames) {
+                    if (name != null && !name.trim().isEmpty()) {
+                        DatabaseService.addOrUpdatePlayer(name, 0);
+                    }
+                }
+
+                Platform.runLater(() -> {
+                    showErrorWindow("Сброс выполнен! Все игроки из всех комнат добавлены с 0 побед.");
+                });
             }
         });
     }
@@ -881,5 +900,13 @@ public class LabController {
         }
         closeStatusWindow();
         ScoreboardWindow.close();
+    }
+
+    @FXML
+    public void onResetAllPlayers() {
+        if (out != null) {
+            out.println("GET_ALL_PLAYERS");
+            System.out.println("Запрошен список всех игроков");
+        }
     }
 }

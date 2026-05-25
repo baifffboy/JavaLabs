@@ -7,10 +7,7 @@ import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.sql.SQLException;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
@@ -37,14 +34,23 @@ public class GameServer {
             while (true) {
                 Socket socket = serverSocket.accept();
 
-                if (clients.size() >= MAX_PLAYERS) {
+                // Временно читаем имя и ID, чтобы понять, наблюдатель ли это
+                BufferedReader tempReader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+                String tempLine = tempReader.readLine();
+                String[] parts = tempLine.split(":");
+                int id = Integer.parseInt(parts[1]);
+
+                // Наблюдатель (id == 0) - не проверяем лимит
+                boolean isObserver = (id == 0);
+
+                if (!isObserver && clients.size() >= MAX_PLAYERS) {
                     PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
                     out.println("SERVER_FULL");
                     socket.close();
                     continue;
                 }
 
-                ClientHandler handler = new ClientHandler(socket, this);
+                ClientHandler handler = new ClientHandler(socket, this, tempLine); // Передаем уже прочитанную строку
                 clients.add(handler);
                 new Thread(handler).start();
             }
@@ -163,10 +169,10 @@ public class GameServer {
             player1.send("OPPONENT:" + player2.name);
             player2.send("OPPONENT:" + player1.name);
 
-            player1.send("SCORE:" + player1.id + ":0:0:" + player1.name);
-            player2.send("SCORE:" + player1.id + ":0:0:" + player1.name);
-            player1.send("SCORE:" + player2.id + ":0:0:" + player2.name);
-            player2.send("SCORE:" + player2.id + ":0:0:" + player2.name);
+            player1.send("SCORE:" + player1.id + ":0:0:" + player1.name + ":" + roomId);
+            player2.send("SCORE:" + player1.id + ":0:0:" + player1.name + ":" + roomId);
+            player1.send("SCORE:" + player2.id + ":0:0:" + player2.name + ":" + roomId);
+            player2.send("SCORE:" + player2.id + ":0:0:" + player2.name + ":" + roomId);
 
             player1.send("START");
             player2.send("START");
@@ -175,10 +181,10 @@ public class GameServer {
             broadcastToObservers("START");
 
             // ✅ ОТПРАВИТЬ НАБЛЮДАТЕЛЯМ ДАННЫЕ ОБОИХ ИГРОКОВ
-            broadcastToObservers("SCORE:" + player1.id + ":0:0:" + player1.name);
-            broadcastToObservers("SCORE:" + player2.id + ":0:0:" + player2.name);
-            broadcastToObservers("NEW_PLAYER:" + player1.id + ":" + player1.name);
-            broadcastToObservers("NEW_PLAYER:" + player2.id + ":" + player2.name);
+            broadcastToObservers("SCORE:" + player1.id + ":0:0:" + player1.name + ":" + roomId);
+            broadcastToObservers("SCORE:" + player2.id + ":0:0:" + player2.name + ":" + roomId);
+            broadcastToObservers("NEW_PLAYER:" + player1.id + ":" + player1.name + ":" + roomId);
+            broadcastToObservers("NEW_PLAYER:" + player2.id + ":" + player2.name + ":" + roomId);
         }
     }
 
@@ -186,10 +192,8 @@ public class GameServer {
         if (!roomGameActive.getOrDefault(roomId, false)) return;
 
         shooter.score += points;
-        broadcastToRoom(roomId, "SCORE:" + shooter.id + ":" + shooter.score + ":" + shooter.shots + ":" + player);
-
-        // ✅ ДОБАВИТЬ РАССЫЛКУ НАБЛЮДАТЕЛЯМ
-        broadcastToObservers("SCORE:" + shooter.id + ":" + shooter.score + ":" + shooter.shots + ":" + shooter.name);
+        broadcastToRoom(roomId, "SCORE:" + shooter.id + ":" + shooter.score + ":" + shooter.shots + ":" + shooter.name + ":" + roomId);
+        broadcastToObservers("SCORE:" + shooter.id + ":" + shooter.score + ":" + shooter.shots + ":" + shooter.name + ":" + roomId);
 
         if (shooter.score >= 6) {
             roomGameActive.put(roomId, false);
@@ -219,10 +223,8 @@ public class GameServer {
         if (!roomGameActive.getOrDefault(roomId, false)) return;
 
         shooter.shots = shots;
-        broadcastToRoom(roomId, "SCORE:" + shooter.id + ":" + shooter.score + ":" + shooter.shots + ":" + shooter.name);
-
-        // ✅ ДОБАВИТЬ РАССЫЛКУ НАБЛЮДАТЕЛЯМ
-        broadcastToObservers("SCORE:" + shooter.id + ":" + shooter.score + ":" + shooter.shots + ":" + shooter.name);
+        broadcastToRoom(roomId, "SCORE:" + shooter.id + ":" + shooter.score + ":" + shooter.shots + ":" + shooter.name + ":" + roomId);
+        broadcastToObservers("SCORE:" + shooter.id + ":" + shooter.score + ":" + shooter.shots + ":" + shooter.name + ":" + roomId);
     }
 
     public synchronized void handleStop(int roomId, String playerName) {
@@ -247,8 +249,8 @@ public class GameServer {
         List<ClientHandler> room = gameRooms.get(roomId);
         if (room != null) {
             for (ClientHandler player : room) {
-                out.println("NEW_PLAYER:" + player.id + ":" + player.name);
-                out.println("SCORE:" + player.id + ":" + player.score + ":" + player.shots + ":" + player.name);
+                out.println("NEW_PLAYER:" + player.id + ":" + player.name + ":" + roomId);
+                out.println("SCORE:" + player.id + ":" + player.score + ":" + player.shots + ":" + player.name + ":" + roomId);
             }
         }
         // Отправляем статус игры
@@ -289,17 +291,24 @@ public class GameServer {
         private boolean gameActive = false;
         private int score = 0;
         private int shots = 0;
+        private String preReadLine;
 
-        ClientHandler(Socket s, GameServer server) throws IOException {
+        ClientHandler(Socket s, GameServer server, String alreadyReadLine) throws IOException {
             this.socket = s;
             this.server = server;
             this.out = new PrintWriter(s.getOutputStream(), true);
             this.in = new BufferedReader(new InputStreamReader(s.getInputStream()));
+            this.preReadLine = alreadyReadLine; // Сохраняем уже прочитанную строку
         }
 
         public void run() {
             try {
-                String line = in.readLine();
+                String line;
+                if (preReadLine != null) {
+                    line = preReadLine;
+                } else {
+                    line = in.readLine();
+                }
                 String[] parts = line.split(":");
                 name = parts[0];
                 id = Integer.parseInt(parts[1]);
@@ -370,14 +379,14 @@ public class GameServer {
                 List<ClientHandler> currentRoom = server.gameRooms.get(roomId);
                 for (ClientHandler c : currentRoom) {
                     if (c != this && c.name != null) {
-                        out.println("NEW_PLAYER:" + c.id + ":" + c.name);
+                        out.println("NEW_PLAYER:" + c.id + ":" + c.name + ":" + roomId);
                         out.println("SCORE:" + c.id + ":" + c.score + ":" + c.shots + ":" + c.name);
                     }
                 }
 
                 for (ClientHandler c : currentRoom) {
                     if (c != this) {
-                        c.send("NEW_PLAYER:" + id + ":" + name);
+                        c.send("NEW_PLAYER:" + id + ":" + name + ":" + roomId);
                         c.send("SCORE:" + id + ":" + score + ":" + shots + ":" + name);
                     }
                 }
@@ -405,6 +414,8 @@ public class GameServer {
                         server.broadcastToRoom(roomId, "ENEMY_SHOT:" + id, this);
                     } else if (msg.equals("GET_LEADERBOARD")) {
                         sendLeaderboardToClient(out);
+                    } else if (msg.equals("GET_ALL_PLAYERS")) {
+                        sendAllPlayersToClient(out);
                     }
                 }
             } catch (IOException e) {
@@ -447,6 +458,28 @@ public class GameServer {
         for (ClientHandler observer : observers) {
             observer.send(msg);
         }
+    }
+
+    public List<String> getAllActivePlayerNames() {
+        List<String> allNames = new ArrayList<>();
+        for (List<ClientHandler> room : gameRooms.values()) {
+            for (ClientHandler player : room) {
+                if (player.name != null && !player.name.isEmpty()) {
+                    allNames.add(player.name);
+                }
+            }
+        }
+        return allNames;
+    }
+
+    private void sendAllPlayersToClient(PrintWriter clientOut) {
+        List<String> allPlayers = getAllActivePlayerNames();
+        StringBuilder sb = new StringBuilder("ALL_PLAYERS:");
+        for (String name : allPlayers) {
+            sb.append(name).append(",");
+        }
+        clientOut.println(sb.toString());
+        System.out.println("Отправлен список всех игроков: " + allPlayers.size() + " игроков");
     }
 
     public static void main(String[] args) {
